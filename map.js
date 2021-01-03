@@ -24,10 +24,8 @@ window.onload=function() {
     canvas.addEventListener('mousemove', (event) => {
         if (panning) {
             // Handle panning.
-            //const transform = territoryInverseTransform();
             anchorPoint.x = event.offsetX;
             anchorPoint.y = event.offsetY;
-            //pointOfInterest = transform.transformPoint(anchorPoint);
             window.requestAnimationFrame(render);
         }
 
@@ -69,20 +67,43 @@ window.onload=function() {
         anchorPoint.y = event.offsetY;
         pointOfInterest = transform.transformPoint(anchorPoint);
     });
+    canvas.addEventListener('click', (event) => {
+        event.preventDefault();
+        const transform = territoryTransform();
+        for (territory of Object.values(compiledTerritories)) {
+            const centerPoint = transform.transformPoint(territory.centerPoint);
+            const dx = centerPoint.x - event.offsetX;
+            const dy = centerPoint.y - event.offsetY;
+            if ((dx * dx) + (dy * dy) < tokenRadius * tokenRadius) {
+                tokenSelected = territory.name;
+                console.info(`selected "${tokenSelected}" token`);
+                return;
+            }
+        }
+        tokenSelected = null;
+        console.info('deselected token');
+    })
     window.requestAnimationFrame(render);
 };
 
+var tokenSelected = null;
+const tokenRadius = 20;
 var panning = false;
 var hoverTerritory = null;
 var mapScale = 1.0;
 var pointOfInterest = new DOMPoint(0, 0);
 var anchorPoint = new DOMPoint(0, 0);
 
-function territoryInverseTransform() {
+function territoryTransform() {
     let transform = new DOMMatrix([1, 0, 0, 1, 0, 0]);
     transform.translateSelf(-pointOfInterest.x * mapScale, -pointOfInterest.y * mapScale); 
     transform.scaleSelf(mapScale, mapScale);
     transform.translateSelf(anchorPoint.x / mapScale, anchorPoint.y / mapScale);
+    return transform;
+}
+
+function territoryInverseTransform() {
+    let transform = territoryTransform();
     transform.invertSelf();
     return transform;
 }
@@ -114,7 +135,7 @@ function renderMap(ctx, compiledTerritories) {
     for (compiledTerritory of Object.values(compiledTerritories)) {
         const centerPoint = territoryTransform.transformPoint(compiledTerritory.centerPoint);
         ctx.moveTo(centerPoint.x, centerPoint.y);
-        ctx.arc(centerPoint.x, centerPoint.y, 20, 0, Math.PI * 2);
+        ctx.arc(centerPoint.x, centerPoint.y, tokenRadius, 0, Math.PI * 2);
     }
     ctx.fill();
 }
