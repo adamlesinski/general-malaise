@@ -22,6 +22,15 @@ window.onload=function() {
         renderMap(ctx, compiledTerritories);
     };
     canvas.addEventListener('mousemove', (event) => {
+        if (panning) {
+            // Handle panning.
+            //const transform = territoryInverseTransform();
+            anchorPoint.x = event.offsetX;
+            anchorPoint.y = event.offsetY;
+            //pointOfInterest = transform.transformPoint(anchorPoint);
+            window.requestAnimationFrame(render);
+        }
+
         const newHover = hitTest(ctx, compiledTerritories, event);
         if (newHover != hoverTerritory) {
             hoverTerritory = newHover;
@@ -30,13 +39,11 @@ window.onload=function() {
     });
     canvas.addEventListener('wheel', (event) => {
         event.preventDefault();
+        if (panning) {
+            return;
+        }
 
-        let transform = new DOMMatrix([1, 0, 0, 1, 0, 0]);
-        transform.translateSelf(-pointOfInterest.x * mapScale, -pointOfInterest.y * mapScale); 
-        transform.scaleSelf(mapScale, mapScale);
-        transform.translateSelf(anchorPoint.x / mapScale, anchorPoint.y / mapScale);
-        transform.invertSelf();
-        
+        const transform = territoryInverseTransform();
         anchorPoint.x = event.offsetX;
         anchorPoint.y = event.offsetY;
         pointOfInterest = transform.transformPoint(anchorPoint);
@@ -48,13 +55,37 @@ window.onload=function() {
 
         window.requestAnimationFrame(render);
     });
+    canvas.addEventListener('mousedown', (event) => {
+        panning = true;
+        const transform = territoryInverseTransform();
+        anchorPoint.x = event.offsetX;
+        anchorPoint.y = event.offsetY;
+        pointOfInterest = transform.transformPoint(anchorPoint);
+    });
+    canvas.addEventListener('mouseup', (event) => {
+        panning = false;
+        const transform = territoryInverseTransform();
+        anchorPoint.x = event.offsetX;
+        anchorPoint.y = event.offsetY;
+        pointOfInterest = transform.transformPoint(anchorPoint);
+    });
     window.requestAnimationFrame(render);
 };
 
+var panning = false;
 var hoverTerritory = null;
 var mapScale = 1.0;
 var pointOfInterest = new DOMPoint(0, 0);
 var anchorPoint = new DOMPoint(0, 0);
+
+function territoryInverseTransform() {
+    let transform = new DOMMatrix([1, 0, 0, 1, 0, 0]);
+    transform.translateSelf(-pointOfInterest.x * mapScale, -pointOfInterest.y * mapScale); 
+    transform.scaleSelf(mapScale, mapScale);
+    transform.translateSelf(anchorPoint.x / mapScale, anchorPoint.y / mapScale);
+    transform.invertSelf();
+    return transform;
+}
 
 function renderMap(ctx, compiledTerritories) {
     ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
@@ -89,8 +120,13 @@ function renderMap(ctx, compiledTerritories) {
 }
 
 function hitTest(ctx, compiledTerritories, event) {
+    const transform = territoryInverseTransform();
+    let point = new DOMPoint(0, 0);
     for (compiledTerritory of Object.values(compiledTerritories)) {
-        if (ctx.isPointInPath(compiledTerritory.borderPath, event.offsetX / mapScale, event.offsetY / mapScale)) {
+        point.x = event.offsetX;
+        point.y = event.offsetY;
+        const mapPoint = transform.transformPoint(point);
+        if (ctx.isPointInPath(compiledTerritory.borderPath, mapPoint.x, mapPoint.y)) {
             return compiledTerritory.name;
         }
     }
