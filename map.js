@@ -19,7 +19,7 @@ window.onload=function() {
     }
     console.info('compiling map complete');
     const render = (time) => {
-        renderMap(canvas, ctx, compiledTerritories);
+        renderMap(ctx, compiledTerritories);
     };
     canvas.addEventListener('mousemove', (event) => {
         const newHover = hitTest(ctx, compiledTerritories, event);
@@ -30,10 +30,22 @@ window.onload=function() {
     });
     canvas.addEventListener('wheel', (event) => {
         event.preventDefault();
+
+        let transform = new DOMMatrix([1, 0, 0, 1, 0, 0]);
+        transform.translateSelf(-pointOfInterest.x * mapScale, -pointOfInterest.y * mapScale); 
+        transform.scaleSelf(mapScale, mapScale);
+        transform.translateSelf(anchorPoint.x / mapScale, anchorPoint.y / mapScale);
+        transform.invertSelf();
+        
+        anchorPoint.x = event.offsetX;
+        anchorPoint.y = event.offsetY;
+        pointOfInterest = transform.transformPoint(anchorPoint);
+
         mapScale += event.deltaY * -0.01;
 
         // Restrict scale
         mapScale = Math.min(Math.max(.125, mapScale), 4);
+
         window.requestAnimationFrame(render);
     });
     window.requestAnimationFrame(render);
@@ -41,11 +53,18 @@ window.onload=function() {
 
 var hoverTerritory = null;
 var mapScale = 1.0;
+var pointOfInterest = new DOMPoint(0, 0);
+var anchorPoint = new DOMPoint(0, 0);
 
-function renderMap(canvas, ctx, compiledTerritories) {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    const savedTransform = ctx.getTransform();
+function renderMap(ctx, compiledTerritories) {
+    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    ctx.save();
+    
+    // Draw the territories.
+    ctx.translate(-pointOfInterest.x * mapScale, -pointOfInterest.y * mapScale);
     ctx.scale(mapScale, mapScale);
+    ctx.translate(anchorPoint.x / mapScale, anchorPoint.y / mapScale);
+    const territoryTransform = ctx.getTransform();
     ctx.strokeStyle = 'black';
     for (compiledTerritory of Object.values(compiledTerritories)) {
         if (compiledTerritory.name == hoverTerritory) {
@@ -56,14 +75,15 @@ function renderMap(canvas, ctx, compiledTerritories) {
             ctx.stroke(compiledTerritory.borderPath);
         }
     }
-    ctx.setTransform(savedTransform);
+    
+    // Draw the tokens.
+    ctx.restore();
     ctx.fillStyle = 'red';
     ctx.beginPath();
     for (compiledTerritory of Object.values(compiledTerritories)) {
-        const centerPointX = compiledTerritory.centerPoint.x * mapScale;
-        const centerPointY = compiledTerritory.centerPoint.y * mapScale;
-        ctx.moveTo(centerPointX, centerPointY);
-        ctx.arc(centerPointX, centerPointY, 20, 0, Math.PI * 2);
+        const centerPoint = territoryTransform.transformPoint(compiledTerritory.centerPoint);
+        ctx.moveTo(centerPoint.x, centerPoint.y);
+        ctx.arc(centerPoint.x, centerPoint.y, 20, 0, Math.PI * 2);
     }
     ctx.fill();
 }
