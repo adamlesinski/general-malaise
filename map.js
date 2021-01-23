@@ -29,7 +29,7 @@ window.onload=function() {
             window.requestAnimationFrame(render);
         }
 
-        const newHover = hitTest(ctx, compiledTerritories, event);
+        const newHover = pickTerritory(ctx, compiledTerritories, event);
         if (newHover != hoverTerritory) {
             hoverTerritory = newHover;
             window.requestAnimationFrame(render);
@@ -69,20 +69,17 @@ window.onload=function() {
     });
     canvas.addEventListener('click', (event) => {
         event.preventDefault();
-        const transform = territoryTransform();
-        for (territory of Object.values(compiledTerritories)) {
-            const centerPoint = transform.transformPoint(territory.centerPoint);
-            const dx = centerPoint.x - event.offsetX;
-            const dy = centerPoint.y - event.offsetY;
-            if ((dx * dx) + (dy * dy) < tokenRadius * tokenRadius) {
-                tokenSelected = territory.name;
+        const token = pickToken(event, compiledTerritories);
+        if (token != tokenSelected) {
+            tokenSelected = token;
+            if (tokenSelected !== null) {
                 console.info(`selected "${tokenSelected}" token`);
-                return;
+            } else {
+                console.info('deselected token');
             }
+            window.requestAnimationFrame(render);
         }
-        tokenSelected = null;
-        console.info('deselected token');
-    })
+    });
     window.requestAnimationFrame(render);
 };
 
@@ -93,6 +90,19 @@ var hoverTerritory = null;
 var mapScale = 1.0;
 var pointOfInterest = new DOMPoint(0, 0);
 var anchorPoint = new DOMPoint(0, 0);
+
+function pickToken(event, compiledTerritories) {
+    const transform = territoryTransform();
+    for (territory of Object.values(compiledTerritories)) {
+        const centerPoint = transform.transformPoint(territory.centerPoint);
+        const dx = centerPoint.x - event.offsetX;
+        const dy = centerPoint.y - event.offsetY;
+        if ((dx * dx) + (dy * dy) < tokenRadius * tokenRadius) {
+            return territory.name;
+        }
+    }
+    return null;
+}
 
 function territoryTransform() {
     let transform = new DOMMatrix([1, 0, 0, 1, 0, 0]);
@@ -110,9 +120,9 @@ function territoryInverseTransform() {
 
 function renderMap(ctx, compiledTerritories) {
     ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-    ctx.save();
     
     // Draw the territories.
+    ctx.save();
     ctx.translate(-pointOfInterest.x * mapScale, -pointOfInterest.y * mapScale);
     ctx.scale(mapScale, mapScale);
     ctx.translate(anchorPoint.x / mapScale, anchorPoint.y / mapScale);
@@ -127,9 +137,10 @@ function renderMap(ctx, compiledTerritories) {
             ctx.stroke(compiledTerritory.borderPath);
         }
     }
+    ctx.restore();
     
     // Draw the tokens.
-    ctx.restore();
+    ctx.save();
     ctx.fillStyle = 'red';
     ctx.beginPath();
     for (compiledTerritory of Object.values(compiledTerritories)) {
@@ -138,15 +149,25 @@ function renderMap(ctx, compiledTerritories) {
         ctx.arc(centerPoint.x, centerPoint.y, tokenRadius, 0, Math.PI * 2);
     }
     ctx.fill();
+    ctx.restore();
+
+    if (tokenSelected !== null) {
+        // Draw selected token.
+        ctx.save();
+        ctx.strokeStyle = 'black';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        const centerPoint = territoryTransform.transformPoint(compiledTerritories[tokenSelected].centerPoint);
+        ctx.arc(centerPoint.x, centerPoint.y, tokenRadius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+    }
 }
 
-function hitTest(ctx, compiledTerritories, event) {
+function pickTerritory(ctx, compiledTerritories, event) {
     const transform = territoryInverseTransform();
-    let point = new DOMPoint(0, 0);
+    const mapPoint = transform.transformPoint(new DOMPoint(event.offsetX, event.offsetY));
     for (compiledTerritory of Object.values(compiledTerritories)) {
-        point.x = event.offsetX;
-        point.y = event.offsetY;
-        const mapPoint = transform.transformPoint(point);
         if (ctx.isPointInPath(compiledTerritory.borderPath, mapPoint.x, mapPoint.y)) {
             return compiledTerritory.name;
         }
