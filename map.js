@@ -2,7 +2,7 @@ const TOKEN_RADIUS = 20;
 
 class MapView extends HTMLElement {
     static get observedAttributes() {
-        return ['width', 'height'];
+        return [];
     }
 
     constructor() {
@@ -10,7 +10,12 @@ class MapView extends HTMLElement {
         this.attachShadow({mode: 'open'});
         this._canvas = document.createElement('canvas');
         const style = document.createElement('style');
-        style.textContent = 'canvas { border: solid; }';
+        style.textContent = `
+            canvas {
+                width: 100%;
+                height: 100%;
+            }
+        `;
         this.shadowRoot.append(style, this._canvas);
         
         this._render = this._render.bind(this);
@@ -19,6 +24,9 @@ class MapView extends HTMLElement {
         this._mouseUp = this._mouseUp.bind(this);
         this._mouseClick = this._mouseClick.bind(this);
         this._mouseWheel = this._mouseWheel.bind(this);
+        this._resizeObserver = new ResizeObserver(() => {
+            window.requestAnimationFrame(this._render);
+        });
 
         this._territories = {};
         this._panning = false;
@@ -36,8 +44,10 @@ class MapView extends HTMLElement {
         this._canvas.addEventListener('mousemove', this._mouseMove);
         this._canvas.addEventListener('mousedown', this._mouseDown);
         this._canvas.addEventListener('mouseup', this._mouseUp);
+        this._canvas.addEventListener('mouseleave', this._mouseUp);
         this._canvas.addEventListener('click', this._mouseClick);
         this._canvas.addEventListener('wheel', this._mouseWheel);
+        this._resizeObserver.observe(this._canvas);
 
         window.requestAnimationFrame(this._render);
     }
@@ -46,8 +56,10 @@ class MapView extends HTMLElement {
         this._canvas.removeEventListener('mousemove', this._mouseMove);
         this._canvas.removeEventListener('mousedown', this._mouseDown);
         this._canvas.removeEventListener('mouseup', this._mouseUp);
+        this._canvas.removeEventListener('mouseleave', this._mouseUp);
         this._canvas.removeEventListener('click', this._mouseClick);
         this._canvas.removeEventListener('wheel', this._mouseWheel);
+        this._resizeObserver.unobserve(this._canvas);
     }
 
     _mouseMove(event) {
@@ -74,11 +86,13 @@ class MapView extends HTMLElement {
     }
 
     _mouseUp(event) {
-        this._panning = false;
-        const transform = this._territoryInverseTransform();
-        this._anchorPoint.x = event.offsetX;
-        this._anchorPoint.y = event.offsetY;
-        this._pointOfInterest = transform.transformPoint(this._anchorPoint);
+        if (this._panning) {
+            this._panning = false;
+            const transform = this._territoryInverseTransform();
+            this._anchorPoint.x = event.offsetX;
+            this._anchorPoint.y = event.offsetY;
+            this._pointOfInterest = transform.transformPoint(this._anchorPoint);
+        }
     }
 
     _mouseClick(event) {
@@ -169,6 +183,14 @@ class MapView extends HTMLElement {
 
     _render() {
         if (!this.isConnected || !this._ctx) { return; }
+        
+        // Check if the canvas needs to be resized.
+        if (this._canvas.width != this._canvas.clientWidth
+            || this._canvas.height != this._canvas.clientHeight) {
+            this._canvas.width = this._canvas.clientWidth;
+            this._canvas.height = this._canvas.clientHeight;
+        }
+
         const ctx = this._ctx;
         ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
