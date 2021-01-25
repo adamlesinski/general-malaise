@@ -1,14 +1,18 @@
 {
     "compilerOptions": {
-      "outDir": "./dist",
-      "allowJs": true,
-      "target": "es6",
-      "strict": true,
-      "lib": [
-        "ES6",
-        "DOM",
-        "DOM.Iterable",
-      ],
+        "outDir": "./dist",
+        "target": "es6",
+        "strict": true,
+        "allowJs": true,
+        "lib": [
+            "esnext",
+            "dom",
+            "dom.iterable",
+        ],
+        "noEmitOnError": true,
+        "moduleResolution": "node",
     },
-    "include": ["./src/**/*"]
-  }
+    "include": [
+        "./src",
+    ]
+}

@@ -1,0 +1,11 @@
+{
+    "name": "map",
+    "author": "Adam Lesinski",
+    "version": "0.1.0",
+    "scripts": {
+        "build": "tsc"
+    },
+    "devDependencies": {
+        "typescript": "next"
+    }
+}
