@@ -1,0 +1,14 @@
+{
+    "compilerOptions": {
+      "outDir": "./dist",
+      "allowJs": true,
+      "target": "es6",
+      "strict": true,
+      "lib": [
+        "ES6",
+        "DOM",
+        "DOM.Iterable",
+      ],
+    },
+    "include": ["./src/**/*"]
+  }

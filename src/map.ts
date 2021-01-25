@@ -1,8 +1,15 @@
-'use strict';
-
 const TOKEN_RADIUS = 20;
 
 class MapView extends HTMLElement {
+    private _canvas: HTMLCanvasElement;
+    private _ctx: CanvasRenderingContext2D | null = null;
+    private _panning: boolean = false;
+    private _anchorPoint: DOMPoint = new DOMPoint(0, 0);
+    private _pointOfInterest: DOMPoint = new DOMPoint(0, 0);
+    private _mapScale: number = 1.0;
+    private _resizeObserver: ResizeObserver;
+    private _mutationObserver: MutationObserver;
+
     constructor() {
         super();
         this.attachShadow({mode: 'open'});
@@ -14,7 +21,7 @@ class MapView extends HTMLElement {
                 height: 100%;
             }
         `;
-        this.shadowRoot.append(style, this._canvas);
+        this.shadowRoot!.append(style, this._canvas);
         
         this._render = this._render.bind(this);
         this._mouseMove = this._mouseMove.bind(this);
@@ -28,13 +35,6 @@ class MapView extends HTMLElement {
         this._mutationObserver = new MutationObserver(records => {
             this.invalidateMap();
         });
-
-        this._panning = false;
-        this._anchorPoint = new DOMPoint(0, 0);
-        this._pointOfInterest = new DOMPoint(0, 0);
-        this._mapScale = 1.0;
-        this._hoverTerritory = null;
-        this._tokenSelected = null;
     }
 
     connectedCallback() {
@@ -60,11 +60,11 @@ class MapView extends HTMLElement {
         this._canvas.removeEventListener('mouseleave', this._mouseUp);
         this._canvas.removeEventListener('click', this._mouseClick);
         this._canvas.removeEventListener('wheel', this._mouseWheel);
-        this._resizeObserver.unobserve(this._canvas);
-        this._mutationObserver.unobserve(this);
+        this._resizeObserver.disconnect();
+        this._mutationObserver.disconnect();
     }
 
-    _mouseMove(event) {
+    _mouseMove(event: MouseEvent) {
         if (this._panning) {
             // Handle panning.
             this._anchorPoint.x = event.offsetX;
@@ -85,7 +85,7 @@ class MapView extends HTMLElement {
         }
     }
 
-    _mouseDown(event) {
+    _mouseDown(event: MouseEvent) {
         this._panning = true;
         const transform = this._territoryInverseTransform();
         this._anchorPoint.x = event.offsetX;
@@ -93,7 +93,7 @@ class MapView extends HTMLElement {
         this._pointOfInterest = transform.transformPoint(this._anchorPoint);
     }
 
-    _mouseUp(event) {
+    _mouseUp(event: MouseEvent) {
         if (this._panning) {
             this._panning = false;
             const transform = this._territoryInverseTransform();
@@ -103,7 +103,7 @@ class MapView extends HTMLElement {
         }
     }
 
-    _mouseClick(event) {
+    _mouseClick(event: MouseEvent) {
         event.preventDefault();
         let selection = this._pickToken(event);
         if (selection === null) {
@@ -124,7 +124,7 @@ class MapView extends HTMLElement {
         }
     }
 
-    _mouseWheel(event) {
+    _mouseWheel(event: MouseEvent) {
         event.preventDefault();
         if (this._panning) {
             return;
@@ -157,21 +157,22 @@ class MapView extends HTMLElement {
         return transform;
     }
     
-    _pickTerritory(event) {
+    _pickTerritory(event: MouseEvent) {
         const transform = this._territoryInverseTransform();
         const mapPoint = transform.transformPoint(new DOMPoint(event.offsetX, event.offsetY));
-        for (const territory of this.querySelectorAll('map-terit')) {
-            if (this._ctx.isPointInPath(territory.path, mapPoint.x, mapPoint.y)) {
+        for (const territory of <NodeListOf<MapTerritory>>this.querySelectorAll('map-terit')) {
+            if (this._ctx!.isPointInPath(territory.path!, mapPoint.x, mapPoint.y)) {
                 return territory;
             }
         }
         return null;
     }
 
-    _pickToken(event) {
+    _pickToken(event: MouseEvent) {
         const transform = this._territoryTransform();
         for (const token of this.querySelectorAll('map-troops')) {
-            const center = transform.transformPoint(token.parentElement.center);
+            const terit = token.parentElement! as MapTerritory;
+            const center = transform.transformPoint(terit.center);
             const dx = center.x - event.offsetX;
             const dy = center.y - event.offsetY;
             if ((dx * dx) + (dy * dy) < TOKEN_RADIUS * TOKEN_RADIUS) {
@@ -199,25 +200,26 @@ class MapView extends HTMLElement {
         const territoryTransform = this._territoryTransform();
         ctx.setTransform(territoryTransform);
         ctx.strokeStyle = 'black';
-        for (const territory of this.querySelectorAll('map-terit')) {
-            ctx.stroke(territory.path);
+        for (const territory of <NodeListOf<MapTerritory>>this.querySelectorAll('map-terit')) {
+            ctx.stroke(territory.path!);
         }
         
         // Draw hovered territory.
-        const hoveredTerritory = this.querySelector('map-terit.hover');
+        const hoveredTerritory = this.querySelector('map-terit.hover') as MapTerritory;
         if (hoveredTerritory !== null && !hoveredTerritory.classList.contains('selected')) {
             ctx.strokeStyle = 'green';
-            ctx.stroke(hoveredTerritory.path);
+            ctx.stroke(hoveredTerritory.path!);
         }
         ctx.restore();
         
         // Draw the tokens.
-        const tokenList = this.querySelectorAll('map-troops');
+        const tokenList = <NodeListOf<MapTroops>>this.querySelectorAll('map-troops');
         ctx.save();
         ctx.fillStyle = 'red';
         ctx.beginPath();
         for (const token of tokenList) {
-            const center = territoryTransform.transformPoint(token.parentElement.center);
+            const terit = token.parentElement! as MapTerritory;
+            const center = territoryTransform.transformPoint(terit.center);
             ctx.moveTo(center.x, center.y);
             ctx.arc(center.x, center.y, TOKEN_RADIUS, 0, Math.PI * 2);
         }
@@ -232,20 +234,22 @@ class MapView extends HTMLElement {
         ctx.font = `${TOKEN_RADIUS * 1.5}px sans-serif`;
         ctx.beginPath();
         for (const token of tokenList) {
-            const center = territoryTransform.transformPoint(token.parentElement.center);
+            const terit = token.parentElement! as MapTerritory;
+            const center = territoryTransform.transformPoint(terit.center);
             ctx.fillText(token.amount.toString(), center.x, center.y);
         }
         ctx.restore();
 
         // Draw the selected token.
-        const selectedToken = this.querySelector('map-troops.selected');
+        const selectedToken = this.querySelector('map-troops.selected') as MapTroops;
         if (selectedToken !== null) {
             // Draw selected token.
             ctx.save();
             ctx.strokeStyle = 'black';
             ctx.lineWidth = 2;
             ctx.beginPath();
-            const center = territoryTransform.transformPoint(selectedToken.parentElement.center);
+            const terit = selectedToken.parentElement! as MapTerritory;
+            const center = territoryTransform.transformPoint(terit.center);
             ctx.arc(center.x, center.y, TOKEN_RADIUS, 0, Math.PI * 2);
             ctx.stroke();
             ctx.restore();
@@ -263,49 +267,45 @@ class MapElement extends HTMLElement {
     }
 
     invalidateMap() {
-        this.parentElement.invalidateMap();
+        (this.parentElement! as MapElement).invalidateMap();
     }
 }
 
-class ImmutableSet extends Object {
-    constructor(set) {
+class ImmutableSet<T> extends Object {
+    private _set: Set<T>;
+    
+    constructor(set: Set<T>) {
         super();
         this._set = set;
     }
 
-    get length() {
+    get length(): number {
         return this._set.size;
     }
 
-    contains(key) {
+    contains(key: T) {
         return this._set.has(key);
     }
 }
 
 class MapTerritory extends MapElement {
-    static get observedAttributes() {
+    static get observedAttributes(): string[] {
         return ['name', 'neighbours', 'path', 'center', 'buildings'];
     }
 
-    constructor() {
-        super();
-        this._name = null;
-        this._neighbours = [];
-        this._path = null;
-        this._center = {
-            x: 0,
-            y: 0,
-        };
-        this._buildings = new ImmutableSet(new Set());
-    }
+    private _name: string | null = null;
+    private _neighbours: string[] = [];
+    private _path: Path2D | null = null;
+    private _center: DOMPoint = new DOMPoint(0, 0);
+    private _buildings: ImmutableSet<string> = new ImmutableSet(new Set());
 
-    get name() { return this._name; }
-    get neighbours() { return this._neighbours; }
-    get path() { return this._path; }
-    get center() { return this._center; }
-    get buildings() { return this._buildings; }
+    get name(): string | null { return this._name; }
+    get neighbours(): string[] { return this._neighbours; }
+    get path(): Path2D | null { return this._path; }
+    get center(): DOMPoint { return this._center; }
+    get buildings(): ImmutableSet<string> { return this._buildings; }
 
-    attributeChangedCallback(name, oldValue, newValue) {
+    attributeChangedCallback(name: string, _oldValue: string, newValue: string) {
         switch (name) {
             case 'name': this._name = newValue; break;
             case 'neighbours': this._neighbours = newValue.split(' '); break;
@@ -320,7 +320,7 @@ class MapTerritory extends MapElement {
                 break;
             }
             case 'buildings': {
-                const values = new Set();
+                const values = new Set<string>();
                 for (const value of newValue.split(' ')) {
                     values.add(value.trim());
                 }
@@ -333,20 +333,17 @@ class MapTerritory extends MapElement {
 }
 
 class MapTroops extends MapElement {
-    static get observedAttributes() {
+    static get observedAttributes(): string[] {
         return ['amount', 'moves'];
     }
 
-    constructor() {
-        super();
-        this._amount = 0;
-        this._moves = 0;
-    }
+    private _amount: number = 0;
+    private _moves: number = 0;
 
-    get amount() { return this._amount; }
-    get moves() { return this._moves; }
+    get amount(): number { return this._amount; }
+    get moves(): number { return this._moves; }
 
-    attributeChangedCallback(name, oldValue, newValue) {
+    attributeChangedCallback(name: string, _oldValue: string, newValue: string) {
         switch (name) {
             case 'amount': this._amount = parseInt(newValue); break;
             case 'moves': this._moves = parseInt(newValue); break;
