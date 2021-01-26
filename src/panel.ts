@@ -1,6 +1,13 @@
+type MoveTroops = {
+    src: string,
+    dst: string,
+    cost: number,
+    amount: number,
+}
+
 class TroopsPanel extends HTMLElement {
     static get observedAttributes(): string[] {
-        return ['amount', 'territory', 'moves'];
+        return ['amount', 'territory', 'moves', 'connected-territories'];
     }
     
     constructor() {
@@ -9,6 +16,60 @@ class TroopsPanel extends HTMLElement {
         const tmpl = document.getElementById('troops-panel-tmpl')! as HTMLTemplateElement;
         const root = this.shadowRoot!;
         root.appendChild(document.importNode(tmpl.content, true));
+        const options = root.querySelector('#move-to-options')! as HTMLSelectElement;
+        options.addEventListener('input', () => {
+            if (options.selectedOptions.length === 0) {
+                btn.setAttribute('disabled', 'true');
+            } else {
+                btn.removeAttribute('disabled');
+            }
+        });
+        const btn = root.querySelector('#move-to-btn')!;
+        btn.addEventListener('click', () => {
+            const selection = options.selectedOptions.item(0);
+            if (selection === null) {
+                throw new Error('must select something');
+            }
+
+            const keyValue = selection.value.split('=');
+            const src = this.getAttribute('territory')!;
+            const dst = keyValue[0];
+            const cost = parseInt(keyValue[1]);
+            const amount = parseInt(this.getAttribute('amount') || '0');
+            this.dispatchEvent(new CustomEvent<MoveTroops>('panel:move', { detail: { src: src, dst: dst, cost: cost, amount: amount }}));
+        });
+    }
+
+    private _updatePossibleMoves(connectedTerritories: string, moves: string) {
+        const movesRemaining = parseInt(moves);
+        const options = this.shadowRoot!.querySelector('#move-to-options')! as HTMLSelectElement;
+        const moveBtn = this.shadowRoot!.querySelector('#move-to-btn')!;
+        options.innerText = '';
+        
+        if (movesRemaining === 0) {
+            options.setAttribute('disabled', 'true');
+            moveBtn.setAttribute('disabled', 'true');
+            return;
+        }
+        options.removeAttribute('disabled');
+        moveBtn.removeAttribute('disabled');
+
+        if (connectedTerritories == '') {
+            return;
+        }
+
+        for (const pair of connectedTerritories.split(' ')) {
+            const keyValue = pair.split('=');
+            const territory = keyValue[0];
+            const moveCost = parseInt(keyValue[1]);
+
+            if (moveCost <= movesRemaining) {
+                const option = document.createElement('option');
+                option.setAttribute('value', pair);
+                option.textContent = territory;
+                options.appendChild(option);
+            }
+        }
     }
 
     attributeChangedCallback(name: string, oldValue: string, newValue: string) {
@@ -22,7 +83,12 @@ class TroopsPanel extends HTMLElement {
                 break;
             case 'moves':
                 root.querySelector('#troop-moves')!.textContent = newValue;
+                this._updatePossibleMoves(this.getAttribute('connected-territories') || '', newValue);
                 break;
+            case 'connected-territories': {
+                this._updatePossibleMoves(newValue, this.getAttribute('moves') || '0');
+                break;
+            }
         }
     }
 }

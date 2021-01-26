@@ -66,6 +66,7 @@ class Computed<T> extends Observable<T> {
 
 type Data = {
     troops: number,
+    moves: number,
     buildings: string,
 };
 
@@ -75,17 +76,50 @@ var bank = new Observable(34);
 var terits = new Observable({
     'Arafan': {
         troops: 3,
+        moves: 3,
         buildings: 'barracks'
     },
     'Moncton': {
         troops: 0,
+        moves: 0,
         buildings: ''
     },
     'Creer': {
         troops: 0,
+        moves: 0,
         buildings: ''
     }
 } as TeritMap);
+
+var teritsImmut = {
+    'Arafan': {
+        neighbours: [ 'Moncton', 'Creer' ]
+    },
+    'Moncton': {
+        neighbours: [ 'Arafan', 'Creer' ]
+    },
+    'Creer': {
+        neighbours: [ 'Moncton', 'Arafan' ]
+    }
+} as { [key: string]: { neighbours: string[] } };
+
+function connectedTerits(src: string, max: number, m?: number): string[] {
+    const move = m || 0;
+    
+    const terits: string[] = [];
+    if (move > max) {
+        return terits;
+    }
+
+    if (move !== 0) {
+        terits.push(`${src}=${move}`);
+    }
+    
+    for (const neighbour of teritsImmut[src].neighbours) {
+        terits.push(...connectedTerits(neighbour, max, move + 1));
+    }
+    return terits;
+}
 
 window.onload = function () {    
     bank.observe(bank => {
@@ -113,10 +147,22 @@ window.onload = function () {
         }
     });
 
-    let cleanup: (() => void) | null = null;
+    let cleanup: (() => void)[] = [];
 
+    const removePanel = () => {
+        let current;
+        while (current = cleanup.pop()) {
+            current();
+        }
+
+        const panel = document.getElementById('contextual-panel')!;
+        while (panel.firstChild) {
+            panel.removeChild(panel.lastChild!);
+        }
+    };
     
     mapView.addEventListener('map:selected', event => {
+        removePanel();
         if (event.target instanceof MapTerritory) {
             const terit = event.target;
             const node = document.createElement('territory-panel');
@@ -143,45 +189,71 @@ window.onload = function () {
                         update.buildings = buildings.join(' ').trim();
                     }
                       
-                    const newData = {
+                    return {
                         ...terits,
                         [terit.name!]: update
                     };
-                    return newData;
                 });
             }) as EventListener);
             const bankObserver = (bank: number) => {
                 node.setAttribute('bank', bank.toString());
             };
             bank.observe(bankObserver);
+            cleanup.push(() => bank.unobserve(bankObserver));
             const teritObserver = (t: TeritMap) => {
                 node.setAttribute('buildings', t[terit.name!].buildings);
             };
             terits.observe(teritObserver);
-            cleanup = () => {
-                bank.unobserve(bankObserver);
-                terits.unobserve(teritObserver);
-            };
+            cleanup.push(() => terits.unobserve(teritObserver));
             document.getElementById('contextual-panel')!.appendChild(node);
         } else if (event.target instanceof MapTroops) {
             const troops = event.target;
             const terit = troops.parentElement! as MapTerritory;
             const node = document.createElement('troops-panel');
-            node.setAttribute('amount', troops.amount.toString());
             node.setAttribute('territory', terit.name!);
-            node.setAttribute('moves', troops.moves.toString());
+            const teritObserver = (t: TeritMap) => {
+                const troops = t[terit.name!];
+                node.setAttribute('connected-territories', connectedTerits(terit.name!, troops.moves).join(' '));
+                node.setAttribute('moves', troops.moves.toString());
+                node.setAttribute('amount', troops.troops.toString());
+            };
+            terits.observe(teritObserver);
+            cleanup.push(() => terits.unobserve(teritObserver));
+
+            node.addEventListener('panel:move', ((event: CustomEvent<MoveTroops>) => {
+                const action = event.detail;
+                terits.update((oldState) => {
+                    const src = {...oldState[action.src]};
+                    const dst = {...oldState[action.dst]};
+                    if (action.cost > src.moves) {
+                        throw new Error('insufficient moves remaining');
+                    }
+                    if (action.amount > src.troops) {
+                        throw new Error('insufficient troops');
+                    }
+                    
+                    if (dst.troops === 0) {
+                        dst.moves = src.moves - action.cost;
+                    }
+                    dst.troops += action.amount;
+                    
+                    src.troops -= action.amount;
+                    if (src.troops === 0) {
+                        src.moves = 0;
+                    }
+                    
+                    return {
+                        ...oldState,
+                        [action.src]: src,
+                        [action.dst]: dst
+                    };
+                });
+            }) as EventListener);
             document.getElementById('contextual-panel')!.appendChild(node);
         }
     });
 
     mapView.addEventListener('map:deselected', () => {
-        if (cleanup) {
-            cleanup();
-            cleanup = null;
-        }
-        const panel = document.getElementById('contextual-panel')!;
-        while (panel.firstChild) {
-            panel.removeChild(panel.lastChild!);
-        }
+        removePanel();
     });
 };
