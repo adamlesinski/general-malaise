@@ -16,7 +16,7 @@
             </map-view>
         </div>
         <div class="control-panel" style="padding: 8px;">
-            <p><span id="current-gold">10</span> gold</p>
+            <p><span id="current-gold"></span> gold</p>
             <p><span id="future-gold">+4</span> gold next turn</p>
             <p><span id="mines">2</span> operational mines</p>
             <p><span id="outposts">3</span> outposts</p>
@@ -24,21 +24,23 @@
             <div id="contextual-panel"></div>
         </div>
     </div>
-    <template id="territory-control-panel-tmpl">
+    <template id="territory-panel-tmpl">
         <h3 id="territory-name"></h3>
+        <p>Buildings: <span id="buildings"></span></p>
         <div>
-            <button id="deploy-btn" disabled>Deploy 1 troops (-1)</button>
+            <button id="deploy-btn" disabled></button>
             <input id="deploy-input" type="number" value="1" min="1" disabled />
         </div>
         <button id="build-outpost-btn" disabled>Build outpost (-6 gold)</button>
         <button id="build-barracks-btn" disabled>Build barracks (-12 gold)</button>
     </template>
-    <template id="troops-control-panel-tmpl">
+    <template id="troops-panel-tmpl">
         <h3><span id="troop-amount"></span> troops</h3>
         <h4>In <span id="territory-name"></span></h4>
         <p><span id="troop-moves"></span> moves remaining</p>
     </template>
     <script src="dist/map.js" type="text/javascript"></script>
+    <script src="dist/panel.js" type="text/javascript"></script>
     <script src="dist/index.js" type="text/javascript"></script>
 </body>
 </html>

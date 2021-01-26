@@ -286,6 +286,10 @@ class ImmutableSet<T> extends Object {
     contains(key: T) {
         return this._set.has(key);
     }
+
+    toString(): string {
+        return Array.from(this._set.keys()).join(' ');
+    }
 }
 
 class MapTerritory extends MapElement {
