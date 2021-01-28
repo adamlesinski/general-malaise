@@ -3,9 +3,12 @@
     "author": "Adam Lesinski",
     "version": "0.1.0",
     "scripts": {
-        "build": "tsc"
+        "build": "tsc",
+        "watch": "tsc -w"
     },
     "devDependencies": {
-        "typescript": "next"
+        "typescript": "next",
+        "@types/react": "^17.0.0",
+        "@types/react-dom": "^17.0.0"
     }
 }

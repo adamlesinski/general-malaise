@@ -1,6 +1,24 @@
 const TOKEN_RADIUS = 20;
 
-class MapView extends HTMLElement {
+type MapSelection = MapTerritory | MapTroops | null;
+interface MapSelectionDetail {
+    current: MapSelection,
+    previous: MapSelection,
+}
+
+class MapElement extends HTMLElement {
+    constructor() {
+        super();
+    }
+
+    invalidateMap() {
+        if (this.parentElement instanceof MapElement) {
+            this.parentElement.invalidateMap();
+        }
+    }
+}
+
+class MapView extends MapElement {
     private _canvas: HTMLCanvasElement;
     private _ctx: CanvasRenderingContext2D | null = null;
     private _panning: boolean = false;
@@ -9,6 +27,7 @@ class MapView extends HTMLElement {
     private _mapScale: number = 1.0;
     private _resizeObserver: ResizeObserver;
     private _mutationObserver: MutationObserver;
+    private _selection: MapSelection = null;
 
     constructor() {
         super();
@@ -33,6 +52,15 @@ class MapView extends HTMLElement {
             this.invalidateMap();
         });
         this._mutationObserver = new MutationObserver(records => {
+            for (const record of records) {
+                for (const removedNode of record.removedNodes) {
+                    if (this._selection === removedNode) {
+                        const oldSelection = this._selection;
+                        this._selection = null;
+                        this.dispatchEvent(new CustomEvent<MapSelectionDetail>('map:selection', { detail: { current: null, previous: oldSelection }}));
+                    }
+                }
+            }
             this.invalidateMap();
         });
     }
@@ -105,21 +133,15 @@ class MapView extends HTMLElement {
 
     _mouseClick(event: MouseEvent) {
         event.preventDefault();
-        let selection = this._pickToken(event);
+        let selection: MapSelection = this._pickToken(event);
         if (selection === null) {
             selection = this._pickTerritory(event);
         };
 
-        const oldSelection = this.querySelector('.selected');
+        const oldSelection = this._selection;
         if (selection !== oldSelection) {
-            if (oldSelection !== null) {
-                oldSelection.classList.remove('selected');
-                oldSelection.dispatchEvent(new CustomEvent('map:deselected', {bubbles: true}));
-            }
-            if (selection !== null) {
-                selection.classList.add('selected');
-                selection.dispatchEvent(new CustomEvent('map:selected', {bubbles: true}));
-            }
+            this._selection = selection;
+            this.dispatchEvent(new CustomEvent<MapSelectionDetail>('map:selection', { detail: { current: this._selection, previous: oldSelection }}));
             this.invalidateMap();
         }
     }
@@ -157,7 +179,7 @@ class MapView extends HTMLElement {
         return transform;
     }
     
-    _pickTerritory(event: MouseEvent) {
+    _pickTerritory(event: MouseEvent): MapTerritory | null {
         const transform = this._territoryInverseTransform();
         const mapPoint = transform.transformPoint(new DOMPoint(event.offsetX, event.offsetY));
         for (const territory of <NodeListOf<MapTerritory>>this.querySelectorAll('map-terit')) {
@@ -168,7 +190,7 @@ class MapView extends HTMLElement {
         return null;
     }
 
-    _pickToken(event: MouseEvent) {
+    _pickToken(event: MouseEvent): MapTroops | null {
         const transform = this._territoryTransform();
         for (const token of this.querySelectorAll('map-troops')) {
             const terit = token.parentElement! as MapTerritory;
@@ -176,7 +198,7 @@ class MapView extends HTMLElement {
             const dx = center.x - event.offsetX;
             const dy = center.y - event.offsetY;
             if ((dx * dx) + (dy * dy) < TOKEN_RADIUS * TOKEN_RADIUS) {
-                return token;
+                return token as MapTroops;
             }
         }
         return null;
@@ -206,7 +228,7 @@ class MapView extends HTMLElement {
         
         // Draw hovered territory.
         const hoveredTerritory = this.querySelector('map-terit.hover') as MapTerritory;
-        if (hoveredTerritory !== null && !hoveredTerritory.classList.contains('selected')) {
+        if (hoveredTerritory !== null && this._selection !== hoveredTerritory) {
             ctx.strokeStyle = 'green';
             ctx.stroke(hoveredTerritory.path!);
         }
@@ -241,14 +263,13 @@ class MapView extends HTMLElement {
         ctx.restore();
 
         // Draw the selected token.
-        const selectedToken = this.querySelector('map-troops.selected') as MapTroops;
-        if (selectedToken !== null) {
+        if (this._selection instanceof MapTroops) {
             // Draw selected token.
             ctx.save();
             ctx.strokeStyle = 'black';
             ctx.lineWidth = 2;
             ctx.beginPath();
-            const terit = selectedToken.parentElement! as MapTerritory;
+            const terit = this._selection.parentElement! as MapTerritory;
             const center = territoryTransform.transformPoint(terit.center);
             ctx.arc(center.x, center.y, TOKEN_RADIUS, 0, Math.PI * 2);
             ctx.stroke();
@@ -258,16 +279,6 @@ class MapView extends HTMLElement {
 
     invalidateMap() {
         window.requestAnimationFrame(this._render);
-    }
-}
-
-class MapElement extends HTMLElement {
-    constructor() {
-        super();
-    }
-
-    invalidateMap() {
-        (this.parentElement! as MapElement).invalidateMap();
     }
 }
 
@@ -289,6 +300,14 @@ class ImmutableSet<T> extends Object {
 
     toString(): string {
         return Array.from(this._set.keys()).join(' ');
+    }
+
+    insert(value: T): ImmutableSet<T> {
+        return new ImmutableSet(new Set([...this._set, value]));
+    }
+
+    [Symbol.iterator](): IterableIterator<T> {
+        return this._set.values()
     }
 }
 
@@ -325,8 +344,10 @@ class MapTerritory extends MapElement {
             }
             case 'buildings': {
                 const values = new Set<string>();
-                for (const value of newValue.split(' ')) {
-                    values.add(value.trim());
+                if (newValue != '') {
+                    for (const value of newValue.split(' ')) {
+                        values.add(value.trim());
+                    }
                 }
                 this._buildings = new ImmutableSet(values);
                 break;
