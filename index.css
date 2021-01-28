@@ -16,6 +16,14 @@ body {
     height: 100%;
 }
 
+@media (orientation: portrait) {
+    .frame {
+        grid-template-columns: 1fr;
+        grid-template-rows: 2fr 1fr;
+        grid-template-areas: "map-area" "control-area";
+    }
+}
+
 .map-panel {
     grid-area: "map-area";
     position: relative;

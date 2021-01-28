@@ -38,6 +38,7 @@ class MapView extends MapElement {
             canvas {
                 width: 100%;
                 height: 100%;
+                touch-action: none;
             }
         `;
         this.shadowRoot!.append(style, this._canvas);
@@ -69,10 +70,8 @@ class MapView extends MapElement {
         if (!this.isConnected) { return; }
         this._ctx = this._canvas.getContext('2d');
 
-        this._canvas.addEventListener('mousemove', this._mouseMove);
-        this._canvas.addEventListener('mousedown', this._mouseDown);
-        this._canvas.addEventListener('mouseup', this._mouseUp);
-        this._canvas.addEventListener('mouseleave', this._mouseUp);
+        this._canvas.addEventListener('pointermove', this._mouseMove);
+        this._canvas.addEventListener('pointerdown', this._mouseDown);
         this._canvas.addEventListener('click', this._mouseClick);
         this._canvas.addEventListener('wheel', this._mouseWheel);
         this._resizeObserver.observe(this._canvas);
@@ -84,8 +83,6 @@ class MapView extends MapElement {
     disconnectedCallback() {
         this._canvas.removeEventListener('mousemove', this._mouseMove);
         this._canvas.removeEventListener('mousedown', this._mouseDown);
-        this._canvas.removeEventListener('mouseup', this._mouseUp);
-        this._canvas.removeEventListener('mouseleave', this._mouseUp);
         this._canvas.removeEventListener('click', this._mouseClick);
         this._canvas.removeEventListener('wheel', this._mouseWheel);
         this._resizeObserver.disconnect();
@@ -119,6 +116,9 @@ class MapView extends MapElement {
         this._anchorPoint.x = event.offsetX;
         this._anchorPoint.y = event.offsetY;
         this._pointOfInterest = transform.transformPoint(this._anchorPoint);
+
+        this._canvas.addEventListener('pointerup', this._mouseUp);
+        this._canvas.addEventListener('pointerleave', this._mouseUp);
     }
 
     _mouseUp(event: MouseEvent) {
@@ -128,6 +128,9 @@ class MapView extends MapElement {
             this._anchorPoint.x = event.offsetX;
             this._anchorPoint.y = event.offsetY;
             this._pointOfInterest = transform.transformPoint(this._anchorPoint);
+
+            this._canvas.removeEventListener('mouseup', this._mouseUp);
+            this._canvas.removeEventListener('mouseleave', this._mouseUp);    
         }
     }
 
