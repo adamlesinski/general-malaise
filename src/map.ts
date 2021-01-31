@@ -41,6 +41,8 @@ class MapView extends MapElement {
     private _canvas: HTMLCanvasElement;
     private _ctx: CanvasRenderingContext2D | null = null;
     private _panning: boolean = false;
+    private _mouseDownOrigin: DOMPoint | null = null;
+    private _ignoreClick: boolean = false;
     private _anchorPoint: DOMPoint = new DOMPoint(0, 0);
     private _pointOfInterest: DOMPoint = new DOMPoint(0, 0);
     private _mapScale: number = 1.0;
@@ -122,6 +124,21 @@ class MapView extends MapElement {
     }
 
     _mouseMove(event: MouseEvent) {
+        if (this._mouseDownOrigin !== null && !this._panning) {
+            const dx = event.offsetX - this._mouseDownOrigin.x;
+            const dy = event.offsetY - this._mouseDownOrigin.y;
+            const distanceSquared = (dx * dx) + (dy * dy);
+            if (distanceSquared > 5*5) {
+                // The mouse has moved enough to mark this as a pan.
+                this._panning = true;
+                const transform = this._territoryInverseTransform();
+                this._anchorPoint.x = this._mouseDownOrigin.x;
+                this._anchorPoint.y = this._mouseDownOrigin.y;
+                this._pointOfInterest = transform.transformPoint(this._anchorPoint);
+                this._mouseDownOrigin = null;
+            }
+        }
+        
         if (this._panning) {
             // Handle panning.
             this._anchorPoint.x = event.offsetX;
@@ -139,19 +156,17 @@ class MapView extends MapElement {
     }
 
     _mouseDown(event: MouseEvent) {
-        this._panning = true;
-        const transform = this._territoryInverseTransform();
-        this._anchorPoint.x = event.offsetX;
-        this._anchorPoint.y = event.offsetY;
-        this._pointOfInterest = transform.transformPoint(this._anchorPoint);
-
+        this._ignoreClick = false;
+        this._mouseDownOrigin = new DOMPoint(event.offsetX, event.offsetY);
         this._canvas.addEventListener('pointerup', this._mouseUp);
         this._canvas.addEventListener('pointerleave', this._mouseUp);
     }
 
     _mouseUp(event: MouseEvent) {
+        this._mouseDownOrigin = null;
         if (this._panning) {
             this._panning = false;
+            this._ignoreClick = true;
             const transform = this._territoryInverseTransform();
             this._anchorPoint.x = event.offsetX;
             this._anchorPoint.y = event.offsetY;
@@ -164,6 +179,10 @@ class MapView extends MapElement {
 
     _mouseClick(event: MouseEvent) {
         event.preventDefault();
+        if (this._ignoreClick) {
+            return;
+        }
+    
         const selection: MapSelection | null = this._pickToken(event);
         const oldSelection = this._selection;
         if (selection !== oldSelection) {
