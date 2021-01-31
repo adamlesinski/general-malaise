@@ -4,6 +4,7 @@
 
 body {
     margin: 0;
+    padding: 0;
     width: 100vw;
     height: 100vh;
 }
@@ -11,21 +12,16 @@ body {
 .frame {
     display: grid;
     grid-template-columns: 2fr 1fr;
-    grid-template-areas: "map-area control-area";
+    grid-template-rows: 40px auto;
+    grid-template-areas: 
+        "phase-area control-area"
+        "map-area control-area";
     width: 100%;
     height: 100%;
 }
 
-@media (orientation: portrait) {
-    .frame {
-        grid-template-columns: 1fr;
-        grid-template-rows: 2fr 1fr;
-        grid-template-areas: "map-area" "control-area";
-    }
-}
-
 .map-panel {
-    grid-area: "map-area";
+    grid-area: map-area;
     position: relative;
 }
 
@@ -35,7 +31,24 @@ map-view {
     height: 100%;
 }
 
+map-territory, map-troops {
+    display: none;
+}
+
 .control-panel {
-    grid-area: "control-area";
+    grid-area: control-area;
     background-color: red;
+}
+
+.phase-panel {
+    grid-area: phase-area;
+    background-color: green;
+}
+
+@media (orientation: portrait) {
+    .frame {
+        grid-template-columns: 1fr;
+        grid-template-rows: 40px 2fr 1fr;
+        grid-template-areas: "phase-area" "map-area" "control-area";
+    }
 }

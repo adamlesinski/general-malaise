@@ -1,9 +1,28 @@
 const TOKEN_RADIUS = 20;
 
-type MapSelection = MapTerritory | MapTroops | null;
-interface MapSelectionDetail {
-    current: MapSelection,
-    previous: MapSelection,
+type MapSelection = MapTroops;
+type MapHoverTarget = MapTerritory | MapTroops;
+
+class MapSelectionEvent extends CustomEvent<{ current: MapSelection | null, previous: MapSelection | null}> {
+    constructor(current: MapSelection | null, previous: MapSelection | null) {
+        super('map:selection', {
+            detail: {
+                current: current,
+                previous: previous,
+            }
+        });
+    }
+}
+
+class MapHoverEvent extends CustomEvent<{ current: MapHoverTarget | null, previous: MapHoverTarget | null }> {
+    constructor(current: MapHoverTarget | null, previous: MapHoverTarget | null) {
+        super('map:hover', {
+            detail: {
+                current: current,
+                previous: previous,
+            }
+        });
+    }
 }
 
 class MapElement extends HTMLElement {
@@ -18,6 +37,20 @@ class MapElement extends HTMLElement {
     }
 }
 
+NodeList.prototype.groupBy = function<K>(keyFn: (node: Node) => K): Map<K, Node[]> {
+    const groups = new Map<K, Node[]>();
+    this.forEach(node => {
+        const key = keyFn(node);
+        const nodes = groups.get(key);
+        if (nodes !== undefined) {
+            nodes.push(node);
+        } else {
+            groups.set(key, [node]);
+        }
+    });
+    return groups;
+};
+
 class MapView extends MapElement {
     private _canvas: HTMLCanvasElement;
     private _ctx: CanvasRenderingContext2D | null = null;
@@ -27,7 +60,8 @@ class MapView extends MapElement {
     private _mapScale: number = 1.0;
     private _resizeObserver: ResizeObserver;
     private _mutationObserver: MutationObserver;
-    private _selection: MapSelection = null;
+    private _selection: MapSelection | null = null;
+    private _hover: MapHoverTarget | null = null;
 
     constructor() {
         super();
@@ -58,7 +92,7 @@ class MapView extends MapElement {
                     if (this._selection === removedNode) {
                         const oldSelection = this._selection;
                         this._selection = null;
-                        this.dispatchEvent(new CustomEvent<MapSelectionDetail>('map:selection', { detail: { current: null, previous: oldSelection }}));
+                        this.dispatchEvent(new MapSelectionEvent(null, oldSelection));
                     }
                 }
             }
@@ -98,14 +132,10 @@ class MapView extends MapElement {
         }
 
         const newHover = this._pickTerritory(event);
-        const oldHover = this.querySelector('.hover');
+        const oldHover = this._hover;
         if (newHover !== oldHover) {
-            if (oldHover !== null) {
-                oldHover.classList.remove('hover');
-            }
-            if (newHover !== null) {
-                newHover.classList.add('hover');
-            }
+            this._hover = newHover;
+            this.dispatchEvent(new MapHoverEvent(this._hover, oldHover));
             this.invalidateMap();
         }
     }
@@ -136,15 +166,11 @@ class MapView extends MapElement {
 
     _mouseClick(event: MouseEvent) {
         event.preventDefault();
-        let selection: MapSelection = this._pickToken(event);
-        if (selection === null) {
-            selection = this._pickTerritory(event);
-        };
-
+        const selection: MapSelection | null = this._pickToken(event);
         const oldSelection = this._selection;
         if (selection !== oldSelection) {
             this._selection = selection;
-            this.dispatchEvent(new CustomEvent<MapSelectionDetail>('map:selection', { detail: { current: this._selection, previous: oldSelection }}));
+            this.dispatchEvent(new MapSelectionEvent(this._selection, oldSelection));
             this.invalidateMap();
         }
     }
@@ -185,7 +211,7 @@ class MapView extends MapElement {
     _pickTerritory(event: MouseEvent): MapTerritory | null {
         const transform = this._territoryInverseTransform();
         const mapPoint = transform.transformPoint(new DOMPoint(event.offsetX, event.offsetY));
-        for (const territory of <NodeListOf<MapTerritory>>this.querySelectorAll('map-terit')) {
+        for (const territory of <NodeListOf<MapTerritory>>this.querySelectorAll('map-territory')) {
             if (this._ctx!.isPointInPath(territory.path!, mapPoint.x, mapPoint.y)) {
                 return territory;
             }
@@ -225,31 +251,33 @@ class MapView extends MapElement {
         const territoryTransform = this._territoryTransform();
         ctx.setTransform(territoryTransform);
         ctx.strokeStyle = 'black';
-        for (const territory of <NodeListOf<MapTerritory>>this.querySelectorAll('map-terit')) {
+        for (const territory of <NodeListOf<MapTerritory>>this.querySelectorAll('map-territory')) {
             ctx.stroke(territory.path!);
         }
         
         // Draw hovered territory.
-        const hoveredTerritory = this.querySelector('map-terit.hover') as MapTerritory;
-        if (hoveredTerritory !== null && this._selection !== hoveredTerritory) {
+        if (this._hover instanceof MapTerritory) {
             ctx.strokeStyle = 'green';
-            ctx.stroke(hoveredTerritory.path!);
+            ctx.stroke(this._hover.path!);
         }
         ctx.restore();
         
         // Draw the tokens.
         const tokenList = <NodeListOf<MapTroops>>this.querySelectorAll('map-troops');
-        ctx.save();
-        ctx.fillStyle = 'red';
-        ctx.beginPath();
-        for (const token of tokenList) {
-            const terit = token.parentElement! as MapTerritory;
-            const center = territoryTransform.transformPoint(terit.center);
-            ctx.moveTo(center.x, center.y);
-            ctx.arc(center.x, center.y, TOKEN_RADIUS, 0, Math.PI * 2);
+        const tokenColorMap = tokenList.groupBy(node => node.color);
+        for (const [color, tokens] of tokenColorMap) {
+            ctx.save();
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            for (const token of tokens) {
+                const terit = token.parentElement! as MapTerritory;
+                const center = territoryTransform.transformPoint(terit.center);
+                ctx.moveTo(center.x, center.y);
+                ctx.arc(center.x, center.y, TOKEN_RADIUS, 0, Math.PI * 2);
+            }
+            ctx.fill();
+            ctx.restore();
         }
-        ctx.fill();
-        ctx.restore();
 
         // Draw the text in the tokens.
         ctx.save();
@@ -316,20 +344,18 @@ class ImmutableSet<T> extends Object {
 
 class MapTerritory extends MapElement {
     static get observedAttributes(): string[] {
-        return ['name', 'neighbours', 'path', 'center', 'buildings'];
+        return ['name', 'neighbours', 'path', 'center'];
     }
 
     private _name: string | null = null;
     private _neighbours: string[] = [];
     private _path: Path2D | null = null;
     private _center: DOMPoint = new DOMPoint(0, 0);
-    private _buildings: ImmutableSet<string> = new ImmutableSet(new Set());
 
     get name(): string | null { return this._name; }
     get neighbours(): string[] { return this._neighbours; }
     get path(): Path2D | null { return this._path; }
     get center(): DOMPoint { return this._center; }
-    get buildings(): ImmutableSet<string> { return this._buildings; }
 
     attributeChangedCallback(name: string, _oldValue: string, newValue: string) {
         switch (name) {
@@ -339,20 +365,10 @@ class MapTerritory extends MapElement {
             case 'center': {
                 const tokens = newValue.split(' ');
                 if (tokens.length != 2) {
-                    throw new Error('<map-terit> center attr must have 2 coordinates');
+                    throw new Error('<map-territory> center attr must have 2 coordinates');
                 }
                 this._center.x = parseFloat(tokens[0].trim());
                 this._center.y = parseFloat(tokens[1].trim());
-                break;
-            }
-            case 'buildings': {
-                const values = new Set<string>();
-                if (newValue != '') {
-                    for (const value of newValue.split(' ')) {
-                        values.add(value.trim());
-                    }
-                }
-                this._buildings = new ImmutableSet(values);
                 break;
             }
         }
@@ -362,24 +378,24 @@ class MapTerritory extends MapElement {
 
 class MapTroops extends MapElement {
     static get observedAttributes(): string[] {
-        return ['amount', 'moves'];
+        return ['amount', 'color'];
     }
 
     private _amount: number = 0;
-    private _moves: number = 0;
+    private _color: string | null = null;
 
     get amount(): number { return this._amount; }
-    get moves(): number { return this._moves; }
+    get color(): string { return this._color || 'white'; }
 
     attributeChangedCallback(name: string, _oldValue: string, newValue: string) {
         switch (name) {
             case 'amount': this._amount = parseInt(newValue); break;
-            case 'moves': this._moves = parseInt(newValue); break;
+            case 'color': this._color = newValue; break;
         }
         this.invalidateMap();
     }
 }
 
 customElements.define('map-view', MapView);
-customElements.define('map-terit', MapTerritory);
+customElements.define('map-territory', MapTerritory);
 customElements.define('map-troops', MapTroops);
