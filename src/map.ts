@@ -37,20 +37,6 @@ class MapElement extends HTMLElement {
     }
 }
 
-NodeList.prototype.groupBy = function<K>(keyFn: (node: Node) => K): Map<K, Node[]> {
-    const groups = new Map<K, Node[]>();
-    this.forEach(node => {
-        const key = keyFn(node);
-        const nodes = groups.get(key);
-        if (nodes !== undefined) {
-            nodes.push(node);
-        } else {
-            groups.set(key, [node]);
-        }
-    });
-    return groups;
-};
-
 class MapView extends MapElement {
     private _canvas: HTMLCanvasElement;
     private _ctx: CanvasRenderingContext2D | null = null;
@@ -62,6 +48,7 @@ class MapView extends MapElement {
     private _mutationObserver: MutationObserver;
     private _selection: MapSelection | null = null;
     private _hover: MapHoverTarget | null = null;
+    private _dialogs: Map<HTMLElement, HTMLElement> = new Map();
 
     constructor() {
         super();
@@ -73,6 +60,9 @@ class MapView extends MapElement {
                 width: 100%;
                 height: 100%;
                 touch-action: none;
+            }
+            .dialog {
+                position: absolute;
             }
         `;
         this.shadowRoot!.append(style, this._canvas);
@@ -87,12 +77,20 @@ class MapView extends MapElement {
             this.invalidateMap();
         });
         this._mutationObserver = new MutationObserver(records => {
+            console.log(records);
             for (const record of records) {
+                for (const addedNode of record.addedNodes) {
+                    if (addedNode instanceof DeployDialog) {
+                        this._addDeployDialog(addedNode);
+                    }
+                }
                 for (const removedNode of record.removedNodes) {
                     if (this._selection === removedNode) {
                         const oldSelection = this._selection;
                         this._selection = null;
                         this.dispatchEvent(new MapSelectionEvent(null, oldSelection));
+                    } else if (removedNode instanceof DeployDialog) {
+                        this._removeDeployDialog(removedNode as DeployDialog);
                     }
                 }
             }
@@ -193,6 +191,44 @@ class MapView extends MapElement {
 
         this.invalidateMap();
     }
+
+    _addDeployDialog(deployDialog: DeployDialog) {
+        const territ = deployDialog.parentElement! as MapTerritory;
+        const dialog = document.createElement('div');
+        dialog.classList.add('dialog');
+        dialog.style.backgroundColor = 'grey';
+        dialog.style.width = '50px';
+        dialog.style.height = '50px';
+        
+        const center = this._territoryTransform().transformPoint(territ.center);
+        dialog.style.left = `${center.x - (50 * 0.5)}px`;
+        dialog.style.top = `${center.y - (50 + TOKEN_RADIUS)}px`;
+        this._dialogs.set(deployDialog, dialog);
+        this.shadowRoot!.appendChild(dialog);
+    }
+
+    _removeDeployDialog(deployDialog: DeployDialog) {
+        const dialog = this._dialogs.get(deployDialog);
+        if (dialog) {
+            this._dialogs.delete(deployDialog);
+            this.shadowRoot!.removeChild(dialog);
+        }
+    }
+
+    _updateDialogs(transform: DOMMatrix) {
+        for (const [deployDialog, dialog] of this._dialogs) {
+            const territ = deployDialog.parentElement! as MapTerritory;
+            const center = transform.transformPoint(territ.center);
+            const newLeft = `${center.x - (50 * 0.5)}px`;
+            const newTop = `${center.y - (50 + TOKEN_RADIUS)}px`;
+            if (dialog.style.left != newLeft) {
+                dialog.style.left = newLeft;
+            }
+            if (dialog.style.top != newTop) {
+                dialog.style.top = newTop;
+            }
+        }
+    }
     
     _territoryTransform() {
         let transform = new DOMMatrix([1, 0, 0, 1, 0, 0]);
@@ -222,8 +258,8 @@ class MapView extends MapElement {
     _pickToken(event: MouseEvent): MapTroops | null {
         const transform = this._territoryTransform();
         for (const token of this.querySelectorAll('map-troops')) {
-            const terit = token.parentElement! as MapTerritory;
-            const center = transform.transformPoint(terit.center);
+            const territ = token.parentElement! as MapTerritory;
+            const center = transform.transformPoint(territ.center);
             const dx = center.x - event.offsetX;
             const dy = center.y - event.offsetY;
             if ((dx * dx) + (dy * dy) < TOKEN_RADIUS * TOKEN_RADIUS) {
@@ -270,8 +306,8 @@ class MapView extends MapElement {
             ctx.fillStyle = color;
             ctx.beginPath();
             for (const token of tokens) {
-                const terit = token.parentElement! as MapTerritory;
-                const center = territoryTransform.transformPoint(terit.center);
+                const territ = token.parentElement! as MapTerritory;
+                const center = territoryTransform.transformPoint(territ.center);
                 ctx.moveTo(center.x, center.y);
                 ctx.arc(center.x, center.y, TOKEN_RADIUS, 0, Math.PI * 2);
             }
@@ -287,8 +323,8 @@ class MapView extends MapElement {
         ctx.font = `${TOKEN_RADIUS * 1.5}px sans-serif`;
         ctx.beginPath();
         for (const token of tokenList) {
-            const terit = token.parentElement! as MapTerritory;
-            const center = territoryTransform.transformPoint(terit.center);
+            const territ = token.parentElement! as MapTerritory;
+            const center = territoryTransform.transformPoint(territ.center);
             ctx.fillText(token.amount.toString(), center.x, center.y);
         }
         ctx.restore();
@@ -300,12 +336,14 @@ class MapView extends MapElement {
             ctx.strokeStyle = 'black';
             ctx.lineWidth = 2;
             ctx.beginPath();
-            const terit = this._selection.parentElement! as MapTerritory;
-            const center = territoryTransform.transformPoint(terit.center);
+            const territ = this._selection.parentElement! as MapTerritory;
+            const center = territoryTransform.transformPoint(territ.center);
             ctx.arc(center.x, center.y, TOKEN_RADIUS, 0, Math.PI * 2);
             ctx.stroke();
             ctx.restore();
         }
+
+        this._updateDialogs(territoryTransform);
     }
 
     invalidateMap() {
@@ -396,6 +434,9 @@ class MapTroops extends MapElement {
     }
 }
 
+class DeployDialog extends MapElement {}
+
 customElements.define('map-view', MapView);
 customElements.define('map-territory', MapTerritory);
 customElements.define('map-troops', MapTroops);
+customElements.define('deploy-dialog', DeployDialog);

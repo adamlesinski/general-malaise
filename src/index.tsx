@@ -103,33 +103,38 @@ function App() {
         return () => mapView.removeEventListener('map:selection', listener);
     }, [mapRef]);
 
+    let phasePanel = null;
+    let deployDialog: React.ReactElement | null = null;
     switch (phase) {
         case Phase.Deploy: {
-
+            phasePanel = <DeployPanel remainingReinforcements={5} totalReinforcements={10} />;
+            deployDialog = <deploy-dialog />;
             break;
         }
     }
 
     const renderedTerrits = [...territs].map(([name, data]) => {
         const props = territsImmut.get(name)!;
+        const selectedName = (selection?.parentElement! as MapTerritory)?.name;
         return (
-            <map-territory key={name} name={name} center={props.center} path={props.path} neighbours={props.neighbours}>
+            <map-territory key={name} name={name} center={props.center} path={props.path} neighbours={props.neighbours.join(' ')}>
                 <map-troops amount={data.troops} color={players.get(data.owner)!.color} />
+                { selectedName && selectedName == name && deployDialog }
             </map-territory>
         );
     });
 
     return (
         <React.Fragment>
-            <div className="phase-panel">
-
+            <div className="phase-area">
+                {phasePanel}
             </div>
-            <div className="map-panel">
+            <div className="map-area">
                 <map-view ref={mapRef}>
                     {renderedTerrits}
                 </map-view>
             </div>
-            <div className="control-panel">
+            <div className="control-area">
                 <ControlPanel territs={territs} players={players} activePlayer={'hawflakes'} />
             </div>
         </React.Fragment>

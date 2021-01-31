@@ -8,13 +8,6 @@ declare namespace JSX {
         ['map-view']: any,
         ['map-territory']: any,
         ['map-troops']: any, 
+        ['deploy-dialog']: any,
     }
-}
-
-declare interface NodeList {
-    groupBy<K>(keyFn: (node: Node) => K): Map<K, Node[]>;
-}
-
-declare interface NodeListOf<TNode> {
-    groupBy<K>(keyFn: (node: TNode) => K): Map<K, TNode[]>;
 }

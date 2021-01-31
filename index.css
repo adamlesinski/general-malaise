@@ -20,9 +20,10 @@ body {
     height: 100%;
 }
 
-.map-panel {
+.map-area {
     grid-area: map-area;
     position: relative;
+    overflow: hidden;
 }
 
 map-view {
@@ -31,18 +32,17 @@ map-view {
     height: 100%;
 }
 
-map-territory, map-troops {
+map-view * {
     display: none;
 }
 
-.control-panel {
+.control-area {
     grid-area: control-area;
     background-color: red;
 }
 
-.phase-panel {
+.phase-area {
     grid-area: phase-area;
-    background-color: green;
 }
 
 @media (orientation: portrait) {
