@@ -8,6 +8,6 @@ declare namespace JSX {
         ['map-view']: any,
         ['map-territory']: any,
         ['map-troops']: any, 
-        ['deploy-dialog']: any,
+        ['map-troops-modifier']: any,
     }
 }
