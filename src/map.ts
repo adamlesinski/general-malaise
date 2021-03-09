@@ -39,6 +39,7 @@ class MapElement extends HTMLElement {
 class MapViewElement extends MapElement {
     private _canvas: HTMLCanvasElement;
     private _ctx: CanvasRenderingContext2D | null = null;
+    private _renderRequest: number | null = null;
     private _panning: boolean = false;
     private _mouseDownOrigin: DOMPoint | null = null;
     private _ignoreClick: boolean = false;
@@ -237,6 +238,7 @@ class MapViewElement extends MapElement {
     }
 
     _render() {
+        this._renderRequest = null;
         if (!this.isConnected || !this._ctx) { return; }
         
         // Check if the canvas needs to be resized.
@@ -316,10 +318,37 @@ class MapViewElement extends MapElement {
         }
         ctx.restore();
 
+        // Draw the arrows.
+        const arrowList = this.querySelectorAll('map-arrow') as NodeListOf<MapArrowElement>;
+        for (const arrowElement of arrowList) {
+            ctx.save();
+            ctx.fillStyle = arrowElement.color;
+            const srcEl = this.querySelector(`map-territory[name=${arrowElement.src}]`)! as MapTerritoryElement;
+            const dstEl = this.querySelector(`map-territory[name=${arrowElement.dst}]`)! as MapTerritoryElement;
+            const src = territoryTransform.transformPoint(srcEl.center);
+            const dst = territoryTransform.transformPoint(dstEl.center);
+            ctx.translate(src.x, src.y);
+            const dx = dst.x - src.x;
+            const dy = dst.y - src.y;
+            const distance = Math.sqrt((dx * dx) + (dy * dy)) - (TOKEN_RADIUS * 2);
+            const bodyLength = distance * 0.8;
+            const arrowSize = distance * 0.2;
+            ctx.rotate(Math.atan2(dy, dx));
+            ctx.beginPath();
+            ctx.moveTo(TOKEN_RADIUS, 0);
+            ctx.lineTo(TOKEN_RADIUS + bodyLength, -arrowSize * 0.33);
+            ctx.lineTo(TOKEN_RADIUS + bodyLength, -arrowSize * 0.66);
+            ctx.lineTo(TOKEN_RADIUS + distance, 0);
+            ctx.lineTo(TOKEN_RADIUS + bodyLength, arrowSize * 0.66);
+            ctx.lineTo(TOKEN_RADIUS + bodyLength, arrowSize * 0.33);
+            ctx.lineTo(TOKEN_RADIUS, 0);
+            ctx.fill();
+            ctx.restore();
+        }
+
         // Draw the selected token.
         const selectedTerrit = this.querySelector('map-troops[selected=true]') as MapTerritoryElement | null;
         if (selectedTerrit) {
-            // Draw selected token.
             ctx.save();
             ctx.strokeStyle = 'black';
             ctx.lineWidth = 2;
@@ -331,6 +360,7 @@ class MapViewElement extends MapElement {
             ctx.restore();
         }
 
+        // Draw the highlighted tokens.
         ctx.save();
         ctx.strokeStyle = 'red';
         ctx.lineWidth = 2;
@@ -350,7 +380,9 @@ class MapViewElement extends MapElement {
     }
 
     invalidateMap() {
-        window.requestAnimationFrame(this._render);
+        if (this._renderRequest == null) {
+            this._renderRequest = window.requestAnimationFrame(this._render);
+        }
     }
 }
 
@@ -424,6 +456,30 @@ class MapTroopsElement extends MapElement {
     }
 }
 
+class MapArrowElement extends MapElement {
+    static get observedAttributes(): string[] {
+        return ['src', 'dst', 'color'];
+    }
+
+    private _src: string = '';
+    private _dst: string = '';
+    private _color: string = '#000000';
+
+    get src(): string { return this._src; }
+    get dst(): string { return this._dst; }
+    get color(): string { return this._color; }
+
+    attributeChangedCallback(name: string, _oldValue: string, newValue: string) {
+        switch (name) {
+            case 'src': this._src = newValue; break;
+            case 'dst': this._dst = newValue; break;
+            case 'color': this._color = newValue; break;
+        }
+        this.invalidateMap();
+    }
+}
+
 customElements.define('map-view', MapViewElement);
 customElements.define('map-territory', MapTerritoryElement);
 customElements.define('map-troops', MapTroopsElement);
+customElements.define('map-arrow', MapArrowElement);

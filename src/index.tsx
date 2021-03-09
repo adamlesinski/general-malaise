@@ -96,8 +96,8 @@ type Phase = DeployPhase | ActionPhase;
 
 interface MapViewProps {
     className?: string,
-    onSelection?: (event: MapSelectionEvent) => void,
-    onHover?: (event: MapHoverEvent) => void,
+    onSelected?: (name: string | null) => void,
+    onHover?: (hover: Hover) => void,
     children?: React.ReactNode,
 }
 
@@ -105,17 +105,37 @@ function MapView(props: MapViewProps) {
     const mapRef: React.Ref<MapViewElement> = React.useRef(null);
 
     React.useEffect(() => {
-        if (props.onSelection) {
+        if (props.onSelected) {
+            const onSelected = props.onSelected;
             const mapView = mapRef.current!;
-            mapView.addEventListener('map:selection', props.onSelection as EventListener);
-            return () => mapView.removeEventListener('map:selection', props.onSelection as EventListener);
+            const listener = (event: MapSelectionEvent) => {
+                const territory = event.detail.target?.territory;
+                if (territory) {
+                    onSelected(territory.name);
+                } else {
+                    onSelected(null);
+                }
+            };
+            mapView.addEventListener('map:selection', listener as EventListener);
+            return () => mapView.removeEventListener('map:selection', listener as EventListener);
         }
-    }, [props.onSelection]);
+    }, [props.onSelected]);
     React.useEffect(() => {
         if (props.onHover) {
+            const onHover = props.onHover;
             const mapView = mapRef.current!;
-            mapView.addEventListener('map:hover', props.onHover as EventListener);
-            return () => mapView.removeEventListener('map:hover', props.onHover as EventListener);
+            const listener = (event: MapHoverEvent) => {
+                if (event.detail.target instanceof MapTerritoryElement) {
+                    onHover({territory: event.detail.target.name, token: null});
+                } else if (event.detail.target instanceof MapTroopsElement) {
+                    const name = event.detail.target.territory?.name ?? null;
+                    onHover({token: name, territory: null});
+                } else {
+                    onHover({territory: null, token: null});
+                }
+            };
+            mapView.addEventListener('map:hover', listener as EventListener);
+            return () => mapView.removeEventListener('map:hover', listener as EventListener);
         }
     }, [props.onHover]);
     return <map-view ref={mapRef} className={props.className}>{props.children}</map-view>;
@@ -146,23 +166,53 @@ function TrackingView(props: TrackingViewProps) {
     return ReactDOM.createPortal(props.children, ref.current!);
 }
 
-function App() {
+
+
+interface AppProps {
+    player: string,
+}
+
+interface Hover {
+    territory: string | null,
+    token: string | null,
+}
+
+function App(props: AppProps) {
     const [territs, setTerrits] = React.useState(initialTerrits);
     const [phase, setPhase] = React.useState<Phase>(() => { return { phase: 'action' };});//'deploy', totalReinforcements: 10, remainingReinforcements: 10, deployments: new Map() }; });
-    const [selection, setSelection] = React.useState(null as MapSelection | null);
-    const [hover, setHover] = React.useState(null as MapHoverTarget | null);
+    const [selection, setSelection] = React.useState(null as string | null);
+    const [hover, setHover] = React.useState({ territory: null, token: null } as Hover);
 
     let phasePanel = null;
     let deployDialog: React.ReactElement | null = null;
     let highlights: string[] = [];
+    let arrows: React.ReactElement[] = [];
     switch (phase.phase) {
         case 'action': {
             const onFinish = () => {};
             phasePanel = <ActionPanel onFinish={onFinish} />
 
-            if (hover && hover instanceof MapTroopsElement) {
-                const territ = hover.parentElement! as MapTerritoryElement;
-                highlights = territsImmut.get(territ.name!)!.neighbours.filter(n => territs.get(n)!.owner != territs.get(territ.name!)!.owner);
+            if (hover && hover.token) {
+                const name = hover.token;
+                highlights = territsImmut.get(name)!.neighbours.filter(n => territs.get(n)!.owner != territs.get(name)!.owner);
+            }
+
+            if (selection) {
+                const src = territs.get(selection)!;
+                if (src.owner == props.player) {
+                    const arrowTargets = territsImmut.get(selection)!.neighbours.filter(n => territs.get(n)!.owner != src.owner);
+                    for (const target of arrowTargets) {
+                        let color = "#f7756baa";
+                        if (hover.token) {
+                            if (hover.token == target) {
+                                color = "#eb1c0c";
+                            }
+                        }
+                        arrows.push(
+                            <map-arrow key={`${selection}:${target}`} src={selection} dst={target} color={color} />
+                        );
+                    }
+                }
             }
             break;
         }
@@ -180,14 +230,13 @@ function App() {
             };
             phasePanel = <DeployPanel onDeploy={onDeploy} remainingReinforcements={phase.remainingReinforcements} totalReinforcements={phase.totalReinforcements} />;
             if (selection) {
-                const name = (selection.parentElement! as MapTerritoryElement).name!;
-                const deployment = phase.deployments.get(name) || 0;
+                const deployment = phase.deployments.get(selection) ?? 0;
                 
                 const onDeployChange = (event: React.ChangeEvent<HTMLInputElement>) => {
                     const number = event.target.valueAsNumber;
                     setPhase(previous => {
                         if (previous.phase == 'deploy') {
-                            previous.deployments.set(name, number);
+                            previous.deployments.set(selection, number);
                             let usedReinforcements = 0;
                             for (const deployment of previous.deployments.values()) {
                                 usedReinforcements += deployment;
@@ -214,7 +263,7 @@ function App() {
     }
 
     const renderedTerrits = [...territs].map(([name, data]) => {
-        const props = territsImmut.get(name)!;
+        const immut = territsImmut.get(name)!;
         let additionalTroops = 0;
         if (phase.phase == 'deploy') {
             const deployments = phase.deployments.get(name);
@@ -223,25 +272,22 @@ function App() {
             }
         }
         const isHighlighted = highlights.includes(name);
-        let isTokenSelected = false;
-        if (selection instanceof MapTroopsElement) {
-            isTokenSelected = selection.territory!.name == name;
-        }
+        const isTokenSelected = selection == name && territs.get(selection)!.owner == props.player;
         let isTokenHovered = false;
         let isTerritHovered = false;
-        if (hover instanceof MapTroopsElement) {
-            isTokenHovered = hover.territory!.name == name;
+        if (hover.token) {
+            isTokenHovered = hover.token == name;
             isTerritHovered = isTokenHovered;
-        } else if (hover instanceof MapTerritoryElement) {
-            isTerritHovered = hover.name == name;
+        } else if (hover.territory) {
+            isTerritHovered = hover.territory == name;
         }
         return (
             <map-territory 
                 key={name}
                 name={name}
-                center={props.center}
-                path={props.path}
-                neighbours={props.neighbours.join(' ')}
+                center={immut.center}
+                path={immut.path}
+                neighbours={immut.neighbours.join(' ')}
                 hovered={isTerritHovered}>
                 <map-troops
                     amount={data.troops}
@@ -260,8 +306,9 @@ function App() {
                 {phasePanel}
             </div>
             <div className="map-area viewport">
-                <MapView className="layer" onSelection={event => setSelection(event.detail.target)} onHover={event => setHover(event.detail.target)}>
+                <MapView className="layer" onSelected={name => setSelection(name)} onHover={hover => setHover(hover)}>
                     {renderedTerrits}
+                    {arrows}
                 </MapView>
                 <div id="overlays" className="layer">
                     {deployDialog}
@@ -275,5 +322,5 @@ function App() {
 }
 
 window.onload = function () {
-    ReactDOM.render(<App />, document.getElementById('app'));
+    ReactDOM.render(<App player="wahtever" />, document.getElementById('app'));
 };   
