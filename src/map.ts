@@ -242,19 +242,23 @@ class MapViewElement extends MapElement {
         if (!this.isConnected || !this._ctx) { return; }
         
         // Check if the canvas needs to be resized.
-        if (this._canvas.width != this._canvas.clientWidth
-            || this._canvas.height != this._canvas.clientHeight) {
-            this._canvas.width = this._canvas.clientWidth;
-            this._canvas.height = this._canvas.clientHeight;
+        const expectedCanvasWidth = Math.floor(this._canvas.clientWidth * window.devicePixelRatio);
+        const expectedCanvasHeight = Math.floor(this._canvas.clientHeight * window.devicePixelRatio);
+        if (this._canvas.width != expectedCanvasWidth
+            || this._canvas.height != expectedCanvasHeight) {
+            this._canvas.width = expectedCanvasWidth;
+            this._canvas.height = expectedCanvasHeight;
         }
 
         const ctx = this._ctx;
         ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+        ctx.save();
+        ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
 
         // Draw the territories.
         ctx.save();
         const territoryTransform = this._territoryTransform();
-        ctx.setTransform(territoryTransform);
+        ctx.setTransform(ctx.getTransform().multiplySelf(territoryTransform));
         ctx.strokeStyle = 'black';
         for (const territory of this.querySelectorAll('map-territory') as NodeListOf<MapTerritoryElement>) {
             ctx.stroke(territory.path!);
@@ -376,6 +380,7 @@ class MapViewElement extends MapElement {
         }
         ctx.restore();
 
+        ctx.restore();
         this._updateOverlays(territoryTransform);
     }
 
