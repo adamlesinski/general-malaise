@@ -187,8 +187,18 @@ function App(props: AppProps) {
     let deployDialog: React.ReactElement | null = null;
     let highlights: string[] = [];
     let arrows: React.ReactElement[] = [];
+    let selectionHandler: ((name: string | null) => void) | undefined = undefined;
     switch (phase.phase) {
         case 'action': {
+            selectionHandler = (name: string | null) => {
+                setSelection(prev => {
+                    if (name && prev && territs.get(prev)!.owner == props.player && territs.get(name)!.owner != props.player) {
+                        console.log(`attack from ${prev} to ${name}`);
+                        return prev;
+                    }
+                    return name;
+                });
+            };
             const onFinish = () => {};
             phasePanel = <ActionPanel onFinish={onFinish} />
 
@@ -217,6 +227,7 @@ function App(props: AppProps) {
             break;
         }
         case 'deploy': {
+            selectionHandler = name => setSelection(name);
             const onDeploy = () => {
                 // TODO: Remove this and have the server response update the state.
                 setTerrits(previous => {
@@ -306,7 +317,7 @@ function App(props: AppProps) {
                 {phasePanel}
             </div>
             <div className="map-area viewport">
-                <MapView className="layer" onSelected={name => setSelection(name)} onHover={hover => setHover(hover)}>
+                <MapView className="layer" onSelected={selectionHandler} onHover={hover => setHover(hover)}>
                     {renderedTerrits}
                     {arrows}
                 </MapView>
