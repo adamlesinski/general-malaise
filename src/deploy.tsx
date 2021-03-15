@@ -30,3 +30,18 @@ function ActionPanel(props: ActionPanelProps) {
         </div>
     );
 }
+
+interface AdvancePanelProps {
+    onFinish: () => void,
+}
+
+function AdvancePanel(props: AdvancePanelProps) {
+    return (
+        <div style={{ backgroundColor: 'orange', display: 'flex', width: '100%', height: '100%', alignItems: 'center' }}>
+            <h1 style={{ padding: '8px', margin: 0, fontSize: '16pt', color: 'white' }}>ADVANCE</h1>
+            <div style={{ flexGrow: 1, display: 'flex', justifyContent: 'flex-end' }}>
+                <button onClick={props.onFinish}>Advance</button>
+            </div>
+        </div>
+    );
+}

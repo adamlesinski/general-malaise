@@ -88,11 +88,15 @@ type DeployPhase = {
     deployments: Map<string, number>,
 };
 
-type ActionPhase = {
-    phase: 'action',
+type AttackPhase = {
+    phase: 'attack',
 };
 
-type Phase = DeployPhase | ActionPhase;
+type AdvancePhase = {
+    phase: 'advance',
+}
+
+type Phase = DeployPhase | AttackPhase | AdvancePhase;
 
 interface MapViewProps {
     className?: string,
@@ -166,10 +170,9 @@ function TrackingView(props: TrackingViewProps) {
     return ReactDOM.createPortal(props.children, ref.current!);
 }
 
-
-
 interface AppProps {
     player: string,
+    gameId: string,
 }
 
 interface Hover {
@@ -179,7 +182,7 @@ interface Hover {
 
 function App(props: AppProps) {
     const [territs, setTerrits] = React.useState(initialTerrits);
-    const [phase, setPhase] = React.useState<Phase>(() => { return { phase: 'action' };});//'deploy', totalReinforcements: 10, remainingReinforcements: 10, deployments: new Map() }; });
+    const [phase, setPhase] = React.useState<Phase>(() => { return { phase: 'deploy', totalReinforcements: 10, remainingReinforcements: 10, deployments: new Map() }; });
     const [selection, setSelection] = React.useState(null as string | null);
     const [hover, setHover] = React.useState({ territory: null, token: null } as Hover);
 
@@ -189,10 +192,45 @@ function App(props: AppProps) {
     let arrows: React.ReactElement[] = [];
     let selectionHandler: ((name: string | null) => void) | undefined = undefined;
     switch (phase.phase) {
-        case 'action': {
+        case 'advance': {
+            const onFinish = () => {};
+            phasePanel = <AdvancePanel onFinish={onFinish} />;
+            break;
+        }
+        case 'attack': {
             selectionHandler = (name: string | null) => {
                 setSelection(prev => {
                     if (name && prev && territs.get(prev)!.owner == props.player && territs.get(name)!.owner != props.player) {
+                        const request = {
+                            attack: {
+                                player: props.player,
+                                from: prev,
+                                to: name,
+                            }
+                        };
+                        sendAction(props.gameId, request).then(result => {
+                            const attackResult = result[0].attack;
+                            setTerrits(prev => {
+                                const update = new Map(prev);
+                                const from = {...update.get(attackResult.from)!};
+                                const to = {...update.get(attackResult.to)!};
+                                from.troops -= attackResult.attacker_losses;
+                                to.troops -= attackResult.defender_losses;
+                                if (attackResult.conquered) {
+                                    to.owner = from.owner;
+                                    from.troops -= 1;
+                                    to.troops = 1;
+                                }
+                                update.set(attackResult.from, from);
+                                update.set(attackResult.to, to);
+                                if (result[1] && result[1].phase_changed) {
+                                    setPhase({ phase: result[1].phase_changed.new_phase });
+                                }
+                                return update;
+                            });
+                        }).catch(err => {
+                            console.error('failed to send attack request:', err);
+                        });
                         console.log(`attack from ${prev} to ${name}`);
                         return prev;
                     }
@@ -228,8 +266,18 @@ function App(props: AppProps) {
         }
         case 'deploy': {
             selectionHandler = name => setSelection(name);
-            const onDeploy = () => {
-                // TODO: Remove this and have the server response update the state.
+            const onDeploy = async () => {
+                const deployments: { [territ: string]: Number } = {};
+                for (const [territ, deployment] of phase.deployments.entries()) {
+                    deployments[territ] = deployment;
+                }
+                const request = {
+                    deploy: {
+                        player: props.player,
+                        deployments: deployments,
+                    }
+                };
+                const result = await sendAction(props.gameId, request);
                 setTerrits(previous => {
                     const update = new Map(previous);
                     for (const [territ, deployment] of phase.deployments.entries()) {
@@ -237,7 +285,7 @@ function App(props: AppProps) {
                     }
                     return update;
                 });
-                setPhase({ phase: 'action'});
+                setPhase({ phase: 'attack'});
             };
             phasePanel = <DeployPanel onDeploy={onDeploy} remainingReinforcements={phase.remainingReinforcements} totalReinforcements={phase.totalReinforcements} />;
             if (selection) {
@@ -263,7 +311,7 @@ function App(props: AppProps) {
                 
                 deployDialog = (
                     <TrackingView>
-                        <div className="dialog" data-tracking={name}>
+                        <div className="dialog" data-tracking={selection}>
                             <input type="number" min="0" max={phase.remainingReinforcements + deployment} value={deployment} onChange={onDeployChange}></input>
                         </div>
                     </TrackingView>
@@ -332,6 +380,34 @@ function App(props: AppProps) {
     );
 }
 
+type ActionRequest = {
+    deploy?: DeployRequest,
+    attack?: AttackRequest,
+}
+
+type DeployRequest = {
+    player: string,
+    deployments: { [territ: string]: Number},
+}
+
+type AttackRequest = {
+    player: string,
+    from: string,
+    to: string,
+}
+
+async function sendAction(gameId: string, action: ActionRequest) {
+    const response = await fetch(`/api/v1/game/${gameId}`, {
+        method: 'POST',
+        body: JSON.stringify(action),
+    });
+    const json = await response.json();
+    if (!response.ok) {
+        throw Error(`failed to send action: ${json.error}`);
+    }
+    return json;
+}
+
 window.onload = function () {
-    ReactDOM.render(<App player="wahtever" />, document.getElementById('app'));
+    ReactDOM.render(<App player="wahtever" gameId="1" />, document.getElementById('app'));
 };   

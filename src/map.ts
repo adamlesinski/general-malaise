@@ -185,7 +185,7 @@ class MapViewElement extends MapElement {
 
     _updateOverlays(transform: DOMMatrix) {
         for (const overlay of document.getElementById('overlays')!.querySelectorAll('[data-tracking]') as NodeListOf<HTMLElement>) {
-            const territ = this.querySelector(`map-territory[name=${overlay.getAttribute('data-tracking')}`) as MapTerritoryElement;
+            const territ = this.querySelector(`map-territory[name=${overlay.getAttribute('data-tracking')}]`) as MapTerritoryElement;
             const center = transform.transformPoint(territ.center);
             const newLeft = `${center.x - (50 * 0.5)}px`;
             const newTop = `${center.y - (50 + TOKEN_RADIUS)}px`;
