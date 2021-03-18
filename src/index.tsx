@@ -284,6 +284,7 @@ function App(props: AppProps) {
     let phasePanel = null;
     let controlPanel = null;
     let mapPanel = null;
+    let nonRenderingComponents: React.ReactElement[] = [];
     if (gameStateLoading) {
         phasePanel = <LoadingGamePanel />
         controlPanel = <LoadingView />;
@@ -303,6 +304,7 @@ function App(props: AppProps) {
         const phase = gameState.phase;
         if (gameState.active_player !== props.player) {
             phasePanel = <WaitingPanel />;
+            nonRenderingComponents.push(<Websocket key="websocket" gameId={props.gameId} applyEvent={applyEvent} />);
         } else if (phase.deploy) {
             const localDeployState = clientDeployState ?? { reinforcementsUsed: 0, request: { player: props.player, deployments: {} }};
             const reinforcementsRemaining = phase.deploy.reinforcements - localDeployState.reinforcementsUsed;
@@ -344,6 +346,7 @@ function App(props: AppProps) {
             const territs = gameState.territs;
             selectionHandler = async (newSelection: string | null) => {
                 if (newSelection && selection && territs.get(selection)!.owner == props.player && territs.get(newSelection)!.owner != props.player) {
+                    console.log(`attacking from ${selection} to ${newSelection}`);
                     // This selection is an attack!
                     const request = {
                         attack: {
@@ -501,6 +504,7 @@ function App(props: AppProps) {
             <div className="control-area">
                 {controlPanel}
             </div>
+            {nonRenderingComponents}
         </React.Fragment>
     );
 }
@@ -564,5 +568,8 @@ function ErrorView() {
 }
 
 window.onload = function () {
-    ReactDOM.render(<App player="wahtever" gameId="1" />, document.getElementById('app'));
+    const params = window.location.search ? window.location.search : '?user=wahtever';
+    const user = params.replace('?user=', '');
+    console.log(`playing as ${user}`);
+    ReactDOM.render(<App player={user} gameId="1" />, document.getElementById('app'));
 };   

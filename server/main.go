@@ -155,17 +155,46 @@ func (ctx *Context) watchGame(w http.ResponseWriter, r *http.Request) {
 	}
 	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Print("upgrade failed:", err)
+		log.Print("upgrade failed: ", err)
 		return
 	}
 	defer c.Close()
+	log.Printf("new watcher: game=%s", gameId)
 	channel := make(chan []byte)
 	game.addListener(channel)
 	defer game.removeListener(channel)
-	for event := range channel {
-		err := c.WriteMessage(websocket.TextMessage, event)
+
+	closeChan := make(chan error)
+	go func() {
+		_, _, err := c.ReadMessage()
 		if err != nil {
-			log.Print("failed to send event:", err)
+			closeChan <- err
+		} else {
+			// Got a message, that is not acceptable.
+			closeChan <- fmt.Errorf("client sent message, which is forbidden")
+			c.Close()
+		}
+	}()
+
+	for {
+		select {
+		case event := <-channel:
+			err := c.WriteMessage(websocket.TextMessage, event)
+			if err != nil {
+				if _, ok := err.(*websocket.CloseError); ok {
+					log.Print("watcher left")
+				} else {
+					log.Print("failed to send event: ", err)
+				}
+				return
+			}
+
+		case err := <-closeChan:
+			if _, ok := err.(*websocket.CloseError); ok {
+				log.Print("watcher left")
+			} else {
+				log.Print("connection unexpectedly closed: ", err)
+			}
 			return
 		}
 	}
