@@ -157,10 +157,11 @@ type GameState = {
 type GameEvent = {
     deploy?: DeployEvent,
     attack?: AttackEvent,
+    advance?: AdvanceEvent,
     phase_changed?: PhaseChangedEvent,
 }
 
-type DeployEvent = DeployRequest
+type DeployEvent = DeployRequest;
 type AttackEvent = {
     player: string,
     defender: string,
@@ -172,6 +173,8 @@ type AttackEvent = {
     defender_losses: number,
     conquered: boolean,
 }
+
+type AdvanceEvent = MoveRequest;
 
 type PhaseChangedEvent = {
     old_player: string,
@@ -186,6 +189,8 @@ async function fetchGameState(gameId: string): Promise<GameState> {
     if (!response.ok) {
         throw new Error(`failed to get game ${gameId}: ${json.error}`);
     }
+    
+    // Convert JSON objects to Maps
     const players = new Map();
     for (const player of json.players) {
         players.set(player.name, player);
@@ -216,10 +221,20 @@ function advanceGameState(current: GameState, event: GameEvent): GameState {
         if (event.attack.conquered) {
             toTerrit.owner = event.attack.player;
             toTerrit.troops = 1;
+            fromTerrit.troops -= 1;
         }
         updatedTerrits.set(event.attack.from, fromTerrit);
         updatedTerrits.set(event.attack.to, toTerrit);
-        return {...current, territs: updatedTerrits };
+        return {...current, territs: updatedTerrits};
+    } else if (event.advance) {
+        const updatedTerrits = new Map(current.territs);
+        const fromTerrit = {...updatedTerrits.get(event.advance.from)!};
+        fromTerrit.troops -= event.advance.troops;
+        const toTerrit = {...updatedTerrits.get(event.advance.to)!};
+        toTerrit.troops += event.advance.troops;
+        updatedTerrits.set(event.advance.from, fromTerrit);
+        updatedTerrits.set(event.advance.to, toTerrit);
+        return {...current, territs: updatedTerrits};
     } else if (event.phase_changed) {
         return {...current, active_player: event.phase_changed.new_player, phase: event.phase_changed.new_phase };
     } else {
@@ -255,9 +270,14 @@ type ClientDeployState = {
     request: DeployRequest,
 }
 
+type ClientAdvanceState = {
+    troops: number,
+}
+
 function App(props: AppProps) {
     const [gameState, gameStateLoading, gameStateError, applyEvent] = useGameState(props.gameId);
     const [clientDeployState, setClientDeployState] = React.useState<ClientDeployState|null>(null);
+    const [clientAdvanceState, setClientAdvanceState] = React.useState<ClientAdvanceState|null>(null);
     const [selection, setSelection] = React.useState(null as string | null);
     const [hover, setHover] = React.useState({ territory: null, token: null } as Hover);
 
@@ -273,7 +293,7 @@ function App(props: AppProps) {
         controlPanel = <ErrorView />
         mapPanel = <ErrorView />
     } else if (gameState) {
-        let deployDialog: React.ReactElement | null = null;
+        let overlays: React.ReactElement[] = [];
         let highlights: string[] = [];
         let arrows: React.ReactElement[] = [];
         let selectionHandler: ((name: string | null) => void) | undefined = undefined;
@@ -281,7 +301,9 @@ function App(props: AppProps) {
         controlPanel = <ControlPanel players={gameState.players} activePlayer={gameState.active_player} thisPlayer={props.player} />
 
         const phase = gameState.phase;
-        if (phase.deploy) {
+        if (gameState.active_player !== props.player) {
+            phasePanel = <WaitingPanel />;
+        } else if (phase.deploy) {
             const localDeployState = clientDeployState ?? { reinforcementsUsed: 0, request: { player: props.player, deployments: {} }};
             const reinforcementsRemaining = phase.deploy.reinforcements - localDeployState.reinforcementsUsed;
             selectionHandler = name => setSelection(name);
@@ -291,9 +313,10 @@ function App(props: AppProps) {
                     applyEvent(event);
                 }
                 setClientDeployState(null);
+                setSelection(null);
             };
             phasePanel = <DeployPanel onDeploy={onDeploy} reinforcementsRemaining={reinforcementsRemaining} reinforcementsTotal={phase.deploy.reinforcements} />;
-            if (selection) {
+            if (selection && gameState.territs.get(selection)!.owner == props.player) {
                 const deployment = localDeployState.request.deployments[selection] ?? 0;
                 const onDeployChange = (event: React.ChangeEvent<HTMLInputElement>) => {
                     const number = event.target.valueAsNumber;
@@ -309,8 +332,8 @@ function App(props: AppProps) {
                         };
                     });
                 };
-                deployDialog = (
-                    <TrackingView>
+                overlays.push(
+                    <TrackingView key="deploy">
                         <div className="dialog" data-tracking={selection}>
                             <input type="number" min="0" max={deployment + reinforcementsRemaining} value={deployment} onChange={onDeployChange}></input>
                         </div>
@@ -337,7 +360,14 @@ function App(props: AppProps) {
                     setSelection(newSelection);
                 }
             };
-            phasePanel = <AttackPanel onFinish={() => {}} />
+            const onFinish = async () => {
+                const events = await sendAction(props.gameId, { end_attack: { player: props.player } });
+                for (const event of events) {
+                    applyEvent(event);
+                }
+                setSelection(null);
+            };
+            phasePanel = <AttackPanel onFinish={onFinish} />
 
             if (hover && hover.token) {
                 const name = hover.token;
@@ -346,7 +376,7 @@ function App(props: AppProps) {
 
             if (selection) {
                 const src = territs.get(selection)!;
-                if (src.owner == props.player) {
+                if (src.owner == props.player && src.troops > 1) {
                     const arrowTargets = territsImmut.get(selection)!.neighbours.filter(n => territs.get(n)!.owner != src.owner);
                     for (const target of arrowTargets) {
                         let color = "#f7756baa";
@@ -362,7 +392,51 @@ function App(props: AppProps) {
                 }
             }
         } else if (phase.advance) {
-            phasePanel = <AdvancePanel onFinish={() => {}}/>
+            const advance = phase.advance;
+            const from = gameState.territs.get(advance.from)!;
+            const to = gameState.territs.get(advance.to)!;
+
+            const onFinish = async () => {
+                const request = {
+                    advance: {
+                        player: props.player,
+                        from: advance.from,
+                        to: advance.to,
+                        troops: clientAdvanceState ? clientAdvanceState.troops : from.troops - 1,
+                    }
+                };
+                const events = await sendAction(props.gameId, request);
+                for (const event of events) {
+                    applyEvent(event);
+                }
+                setClientAdvanceState(null);
+                setSelection(advance.to);
+            };
+            phasePanel = <AdvancePanel onFinish={onFinish}/>
+            
+            const troops = clientAdvanceState ? clientAdvanceState.troops : from.troops - 1;
+            const onAdvanceChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+                setClientAdvanceState({ troops: event.target.valueAsNumber });
+            };
+            overlays.push(
+                <TrackingView key="advance">
+                    <div className="dialog" data-tracking={advance.to}>
+                        <input type="number" min="0" max={from.troops - 1} value={troops} onChange={onAdvanceChange}></input>
+                    </div>
+                </TrackingView>
+            );
+            arrows.push(
+                <map-arrow key="advance" src={advance.from} dst={advance.to} color="orange" />
+            );
+        } else if (phase.reinforce) {
+            const onFinish = async () => {
+                const events = await sendAction(props.gameId, { end_reinforce: { player: props.player }});
+                for (const event of events) {
+                    applyEvent(event);
+                }
+                setSelection(null);
+            };
+            phasePanel = <ReinforcePanel onFinish={onFinish}/>
         }
 
         const renderedTerrits = [...gameState.territs.entries()].map(([name, data]) => {
@@ -375,7 +449,7 @@ function App(props: AppProps) {
                 }
             }
             const isHighlighted = highlights.includes(name);
-            const isTokenSelected = selection == name && gameState.territs.get(selection)!.owner == props.player;
+            let isTokenSelected = selection == name && data.owner == props.player && data.troops > 1;
             let isTokenHovered = false;
             let isTerritHovered = false;
             if (hover.token) {
@@ -410,7 +484,7 @@ function App(props: AppProps) {
                     {arrows}
                 </MapView>
                 <div id="overlays" className="layer">
-                    {deployDialog}
+                    {overlays}
                 </div>
             </React.Fragment>
         );
@@ -434,6 +508,9 @@ function App(props: AppProps) {
 type ActionRequest = {
     deploy?: DeployRequest,
     attack?: AttackRequest,
+    advance?: MoveRequest,
+    end_attack?: EndPhaseRequest,
+    end_reinforce?: EndPhaseRequest,
 }
 
 type DeployRequest = {
@@ -445,6 +522,17 @@ type AttackRequest = {
     player: string,
     from: string,
     to: string,
+}
+
+type MoveRequest = {
+    player: string,
+    from: string,
+    to: string,
+    troops: number,
+}
+
+type EndPhaseRequest = {
+    player: string
 }
 
 async function sendAction(gameId: string, action: ActionRequest): Promise<GameEvent[]> {

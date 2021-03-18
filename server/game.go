@@ -7,11 +7,12 @@ import (
 )
 
 type Action struct {
-	Deploy    *DeployAction    `json:"deploy,omitempty"`
-	Attack    *AttackAction    `json:"attack,omitempty"`
-	EndAttack *EndAttackAction `json:"end_attack,omitempty"`
-	Advance   *MoveAction      `json:"advance,omitempty"`
-	Reinforce *MoveAction      `json:"reinforce,omitempty"`
+	Deploy       *DeployAction   `json:"deploy,omitempty"`
+	Attack       *AttackAction   `json:"attack,omitempty"`
+	EndAttack    *EndPhaseAction `json:"end_attack,omitempty"`
+	Advance      *MoveAction     `json:"advance,omitempty"`
+	Reinforce    *MoveAction     `json:"reinforce,omitempty"`
+	EndReinforce *EndPhaseAction `json:"end_reinforce,omitempty"`
 }
 
 type DeployAction struct {
@@ -25,7 +26,7 @@ type AttackAction struct {
 	To     string `json:"to"`
 }
 
-type EndAttackAction struct {
+type EndPhaseAction struct {
 	Player string `json:"player"`
 }
 
@@ -81,11 +82,11 @@ type Player struct {
 }
 
 type Phase struct {
-	Lobby     *LobbyPhase     `json:"lobby"`
-	Deploy    *DeployPhase    `json:"deploy"`
-	Attack    *AttackPhase    `json:"attack"`
-	Advance   *AdvancePhase   `json:"advance"`
-	Reinforce *ReinforcePhase `json:"reinforce"`
+	Lobby     *LobbyPhase     `json:"lobby,omitempty"`
+	Deploy    *DeployPhase    `json:"deploy,omitempty"`
+	Attack    *AttackPhase    `json:"attack,omitempty"`
+	Advance   *AdvancePhase   `json:"advance,omitempty"`
+	Reinforce *ReinforcePhase `json:"reinforce,omitempty"`
 }
 
 type LobbyPhase struct {
@@ -205,6 +206,9 @@ func (g *GameState) ApplyAction(m *Map, action *Action) ([]*Event, error) {
 	} else if g.Phase.Advance != nil {
 		return g.applyAdvanceAction(action.Advance)
 	} else if g.Phase.Reinforce != nil {
+		if action.EndReinforce != nil {
+			return g.applyEndReinforceAction(action.EndReinforce)
+		}
 		return g.applyReinforceAction(m, action.Reinforce)
 	} else if g.Phase.Lobby != nil {
 		return nil, fmt.Errorf("game has not been started")
@@ -357,7 +361,7 @@ func (g *GameState) applyAttackAction(m *Map, attack *AttackAction) ([]*Event, e
 	return events, nil
 }
 
-func (g *GameState) applyEndAttackAction(endAttack *EndAttackAction) ([]*Event, error) {
+func (g *GameState) applyEndAttackAction(endAttack *EndPhaseAction) ([]*Event, error) {
 	if endAttack == nil {
 		return nil, fmt.Errorf("action does not apply to 'attack' phase")
 	}
@@ -396,7 +400,7 @@ func (g *GameState) applyAdvanceAction(advance *MoveAction) ([]*Event, error) {
 	if !found {
 		return nil, fmt.Errorf("territory '%s' does not exist", advance.To)
 	}
-	if to.Owner == advance.Player {
+	if to.Owner != advance.Player {
 		return nil, fmt.Errorf("territory '%s' does not belong to you", advance.To)
 	}
 	if advance.Troops >= from.Troops {
@@ -459,5 +463,29 @@ func (g *GameState) applyReinforceAction(m *Map, reinforce *MoveAction) ([]*Even
 			OldPhase:  oldPhase,
 			NewPhase:  g.Phase,
 		}},
+	}, nil
+}
+
+func (g *GameState) applyEndReinforceAction(endReinforce *EndPhaseAction) ([]*Event, error) {
+	if endReinforce == nil {
+		return nil, fmt.Errorf("action does not apply to 'reinforce' phase")
+	}
+	if g.ActivePlayer != endReinforce.Player {
+		return nil, fmt.Errorf("it is not your turn")
+	}
+	g.selectNextPlayer()
+	oldPhase := g.Phase
+	g.Phase = Phase{Deploy: &DeployPhase{
+		Reinforcements: g.findPlayer(g.ActivePlayer).Reinforcements,
+	}}
+	return []*Event{
+		{
+			PhaseChanged: &PhaseChangedEvent{
+				OldPlayer: endReinforce.Player,
+				NewPlayer: g.ActivePlayer,
+				OldPhase:  oldPhase,
+				NewPhase:  g.Phase,
+			},
+		},
 	}, nil
 }
