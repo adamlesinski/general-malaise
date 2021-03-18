@@ -3,30 +3,6 @@ interface TerritoryData {
     troops: number,
 };
 
-const initialTerrits = new Map<string, TerritoryData>([
-    [
-        'Arafan',
-        {
-            owner: 'hawflakes',
-            troops: 3,
-        },  
-    ],
-    [
-        'Moncton',
-        {
-            owner: 'hawflakes',
-            troops: 1,
-        },
-    ],
-    [
-        'Creer',
-        {
-            owner: 'wahtever',
-            troops: 1,
-        },
-    ],
-]);
-
 interface TerritoryImmutableProps {
     neighbours: string[],
     center: string,
@@ -63,40 +39,31 @@ const territsImmut = new Map<string, TerritoryImmutableProps>([
 interface Player {
     name: string,
     color: string,
+    eliminated: boolean,
+    reinforcements: number,
+    troops: number,
+    territories: number,
 }
-
-const players = new Map<string, Player>([
-    [
-        'hawflakes',
-        {
-            name: 'hawflakes', color: 'red',
-        },
-    ],
-    [
-        'wahtever',
-        {
-            name: 'wahtever',
-            color: 'green',
-        },
-    ],
-]);
 
 type DeployPhase = {
-    phase: 'deploy',
-    totalReinforcements: number,
-    remainingReinforcements: number,
-    deployments: Map<string, number>,
+    reinforcements: number,
 };
 
-type AttackPhase = {
-    phase: 'attack',
-};
+type AttackPhase = {};
 
 type AdvancePhase = {
-    phase: 'advance',
+    from: string,
+    to: string,
 }
 
-type Phase = DeployPhase | AttackPhase | AdvancePhase;
+type ReinforcePhase = {}
+
+type Phase = {
+    deploy?: DeployPhase,
+    attack?: AttackPhase,
+    advance?: AdvancePhase,
+    reinforce?: ReinforcePhase,
+}
 
 interface MapViewProps {
     className?: string,
@@ -180,65 +147,197 @@ interface Hover {
     token: string | null,
 }
 
+type GameState = {
+    phase: Phase,
+	active_player: string,
+    players: Map<string, Player>,
+	territs: Map<string, TerritoryData>,
+}
+
+type GameEvent = {
+    deploy?: DeployEvent,
+    attack?: AttackEvent,
+    phase_changed?: PhaseChangedEvent,
+}
+
+type DeployEvent = DeployRequest
+type AttackEvent = {
+    player: string,
+    defender: string,
+    from: string,
+    to: string,
+    defender_rolls: number[],
+    attacker_rolls: number[],
+    attacker_losses: number,
+    defender_losses: number,
+    conquered: boolean,
+}
+
+type PhaseChangedEvent = {
+    old_player: string,
+    new_player: string,
+    old_phase: Phase,
+    new_phase: Phase,
+}
+
+async function fetchGameState(gameId: string): Promise<GameState> {
+    const response = await fetch(`/api/v1/game/${gameId}`);
+    const json = await response.json();
+    if (!response.ok) {
+        throw new Error(`failed to get game ${gameId}: ${json.error}`);
+    }
+    const players = new Map();
+    for (const player of json.players) {
+        players.set(player.name, player);
+    }
+    const territs = new Map();
+    for (const [name, territ] of Object.entries(json.territs)) {
+        territs.set(name, territ);
+    }
+    return {...json, players: players, territs: territs};
+}
+
+function advanceGameState(current: GameState, event: GameEvent): GameState {
+    console.log(`advancing game state with event: ${JSON.stringify(event)}`);
+    if (event.deploy) {
+        const updatedTerrits = new Map(current.territs);
+        for (const [territName, troops] of Object.entries(event.deploy.deployments)) {
+            const territ = {...updatedTerrits.get(territName)!};
+            territ.troops += troops;
+            updatedTerrits.set(territName, territ);
+        }
+        return {...current, territs: updatedTerrits };
+    } else if (event.attack) {
+        const updatedTerrits = new Map(current.territs);
+        const fromTerrit = {...updatedTerrits.get(event.attack.from)!};
+        fromTerrit.troops -= event.attack.attacker_losses;
+        const toTerrit = {...updatedTerrits.get(event.attack.to)!};
+        toTerrit.troops -= event.attack.defender_losses;
+        if (event.attack.conquered) {
+            toTerrit.owner = event.attack.player;
+            toTerrit.troops = 1;
+        }
+        updatedTerrits.set(event.attack.from, fromTerrit);
+        updatedTerrits.set(event.attack.to, toTerrit);
+        return {...current, territs: updatedTerrits };
+    } else if (event.phase_changed) {
+        return {...current, active_player: event.phase_changed.new_player, phase: event.phase_changed.new_phase };
+    } else {
+        throw new Error('unrecognized event');
+    }
+}
+
+function useGameState(gameId: string): [GameState | null, boolean, string | null, (event: GameEvent) => void] {
+    type GameStateImpl = {
+        error: string | null,
+        loading: boolean,
+        state: GameState | null,
+    };
+    const [state, setState] = React.useState<GameStateImpl>({ error: null, loading: true, state: null });
+    React.useEffect(() => {
+        fetchGameState(gameId)
+            .then(gameState => setState({ error: null, loading: false, state: gameState }))
+            .catch(err => setState(prev => { return { ...prev, error: err, loading: false }; }));
+    }, [gameId]);
+    const apply = (event: GameEvent) => {
+        setState(prev => {
+            if (prev.state === null) {
+                throw new Error('cannot apply event to null game state');
+            }
+            return { ...prev, state: advanceGameState(prev.state, event) };
+        });
+    };
+    return [state.state, state.loading, state.error, apply];
+}
+
+type ClientDeployState = {
+    reinforcementsUsed: number,
+    request: DeployRequest,
+}
+
 function App(props: AppProps) {
-    const [territs, setTerrits] = React.useState(initialTerrits);
-    const [phase, setPhase] = React.useState<Phase>(() => { return { phase: 'deploy', totalReinforcements: 10, remainingReinforcements: 10, deployments: new Map() }; });
+    const [gameState, gameStateLoading, gameStateError, applyEvent] = useGameState(props.gameId);
+    const [clientDeployState, setClientDeployState] = React.useState<ClientDeployState|null>(null);
     const [selection, setSelection] = React.useState(null as string | null);
     const [hover, setHover] = React.useState({ territory: null, token: null } as Hover);
 
     let phasePanel = null;
-    let deployDialog: React.ReactElement | null = null;
-    let highlights: string[] = [];
-    let arrows: React.ReactElement[] = [];
-    let selectionHandler: ((name: string | null) => void) | undefined = undefined;
-    switch (phase.phase) {
-        case 'advance': {
-            const onFinish = () => {};
-            phasePanel = <AdvancePanel onFinish={onFinish} />;
-            break;
-        }
-        case 'attack': {
-            selectionHandler = (name: string | null) => {
-                setSelection(prev => {
-                    if (name && prev && territs.get(prev)!.owner == props.player && territs.get(name)!.owner != props.player) {
-                        const request = {
-                            attack: {
-                                player: props.player,
-                                from: prev,
-                                to: name,
-                            }
-                        };
-                        sendAction(props.gameId, request).then(result => {
-                            const attackResult = result[0].attack;
-                            setTerrits(prev => {
-                                const update = new Map(prev);
-                                const from = {...update.get(attackResult.from)!};
-                                const to = {...update.get(attackResult.to)!};
-                                from.troops -= attackResult.attacker_losses;
-                                to.troops -= attackResult.defender_losses;
-                                if (attackResult.conquered) {
-                                    to.owner = from.owner;
-                                    from.troops -= 1;
-                                    to.troops = 1;
-                                }
-                                update.set(attackResult.from, from);
-                                update.set(attackResult.to, to);
-                                if (result[1] && result[1].phase_changed) {
-                                    setPhase({ phase: result[1].phase_changed.new_phase });
-                                }
-                                return update;
-                            });
-                        }).catch(err => {
-                            console.error('failed to send attack request:', err);
-                        });
-                        console.log(`attack from ${prev} to ${name}`);
-                        return prev;
-                    }
-                    return name;
-                });
+    let controlPanel = null;
+    let mapPanel = null;
+    if (gameStateLoading) {
+        phasePanel = <LoadingGamePanel />
+        controlPanel = <LoadingView />;
+        mapPanel = <LoadingView />;
+    } else if (gameStateError) {
+        phasePanel = <ErrorGamePanel message={gameStateError} />
+        controlPanel = <ErrorView />
+        mapPanel = <ErrorView />
+    } else if (gameState) {
+        let deployDialog: React.ReactElement | null = null;
+        let highlights: string[] = [];
+        let arrows: React.ReactElement[] = [];
+        let selectionHandler: ((name: string | null) => void) | undefined = undefined;
+
+        controlPanel = <ControlPanel players={gameState.players} activePlayer={gameState.active_player} thisPlayer={props.player} />
+
+        const phase = gameState.phase;
+        if (phase.deploy) {
+            const localDeployState = clientDeployState ?? { reinforcementsUsed: 0, request: { player: props.player, deployments: {} }};
+            const reinforcementsRemaining = phase.deploy.reinforcements - localDeployState.reinforcementsUsed;
+            selectionHandler = name => setSelection(name);
+            const onDeploy = async () => {
+                const events = await sendAction(props.gameId, { deploy: localDeployState.request });
+                for (const event of events) {
+                    applyEvent(event);
+                }
+                setClientDeployState(null);
             };
-            const onFinish = () => {};
-            phasePanel = <ActionPanel onFinish={onFinish} />
+            phasePanel = <DeployPanel onDeploy={onDeploy} reinforcementsRemaining={reinforcementsRemaining} reinforcementsTotal={phase.deploy.reinforcements} />;
+            if (selection) {
+                const deployment = localDeployState.request.deployments[selection] ?? 0;
+                const onDeployChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+                    const number = event.target.valueAsNumber;
+                    setClientDeployState(prev => {
+                        if (!prev) {
+                            prev = { reinforcementsUsed: 0, request: { player: props.player, deployments: {} }};
+                        }
+                        const updates = {...prev.request.deployments, [selection]: number};
+                        const used = Object.values(updates).reduce((sum, troops) => sum + troops, 0);
+                        return {
+                            reinforcementsUsed: used,
+                            request: {...prev.request, deployments: updates}
+                        };
+                    });
+                };
+                deployDialog = (
+                    <TrackingView>
+                        <div className="dialog" data-tracking={selection}>
+                            <input type="number" min="0" max={deployment + reinforcementsRemaining} value={deployment} onChange={onDeployChange}></input>
+                        </div>
+                    </TrackingView>
+                );
+            }
+        } else if (phase.attack) {
+            const territs = gameState.territs;
+            selectionHandler = async (newSelection: string | null) => {
+                if (newSelection && selection && territs.get(selection)!.owner == props.player && territs.get(newSelection)!.owner != props.player) {
+                    // This selection is an attack!
+                    const request = {
+                        attack: {
+                            player: props.player,
+                            from: selection,
+                            to: newSelection,
+                        }
+                    };
+                    const events = await sendAction(props.gameId, request);
+                    for (const event of events) {
+                        applyEvent(event);
+                    }
+                } else {
+                    setSelection(newSelection);
+                }
+            };
+            phasePanel = <AttackPanel onFinish={() => {}} />
 
             if (hover && hover.token) {
                 const name = hover.token;
@@ -262,109 +361,50 @@ function App(props: AppProps) {
                     }
                 }
             }
-            break;
+        } else if (phase.advance) {
+            phasePanel = <AdvancePanel onFinish={() => {}}/>
         }
-        case 'deploy': {
-            selectionHandler = name => setSelection(name);
-            const onDeploy = async () => {
-                const deployments: { [territ: string]: Number } = {};
-                for (const [territ, deployment] of phase.deployments.entries()) {
-                    deployments[territ] = deployment;
+
+        const renderedTerrits = [...gameState.territs.entries()].map(([name, data]) => {
+            const immut = territsImmut.get(name)!;
+            let additionalTroops = 0;
+            if (clientDeployState) {
+                const deployments = clientDeployState.request.deployments[name];
+                if (deployments) {
+                    additionalTroops = deployments;
                 }
-                const request = {
-                    deploy: {
-                        player: props.player,
-                        deployments: deployments,
-                    }
-                };
-                const result = await sendAction(props.gameId, request);
-                setTerrits(previous => {
-                    const update = new Map(previous);
-                    for (const [territ, deployment] of phase.deployments.entries()) {
-                        update.get(territ)!.troops += deployment;
-                    }
-                    return update;
-                });
-                setPhase({ phase: 'attack'});
-            };
-            phasePanel = <DeployPanel onDeploy={onDeploy} remainingReinforcements={phase.remainingReinforcements} totalReinforcements={phase.totalReinforcements} />;
-            if (selection) {
-                const deployment = phase.deployments.get(selection) ?? 0;
-                
-                const onDeployChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-                    const number = event.target.valueAsNumber;
-                    setPhase(previous => {
-                        if (previous.phase == 'deploy') {
-                            previous.deployments.set(selection, number);
-                            let usedReinforcements = 0;
-                            for (const deployment of previous.deployments.values()) {
-                                usedReinforcements += deployment;
-                            }
-                            return {
-                                ...previous,
-                                remainingReinforcements: previous.totalReinforcements - usedReinforcements,
-                            };
-                        }
-                        return previous;
-                    });
-                };
-                
-                deployDialog = (
-                    <TrackingView>
-                        <div className="dialog" data-tracking={selection}>
-                            <input type="number" min="0" max={phase.remainingReinforcements + deployment} value={deployment} onChange={onDeployChange}></input>
-                        </div>
-                    </TrackingView>
-                );
             }
-            break;
-        }
-    }
-
-    const renderedTerrits = [...territs].map(([name, data]) => {
-        const immut = territsImmut.get(name)!;
-        let additionalTroops = 0;
-        if (phase.phase == 'deploy') {
-            const deployments = phase.deployments.get(name);
-            if (deployments) {
-                additionalTroops = deployments;
+            const isHighlighted = highlights.includes(name);
+            const isTokenSelected = selection == name && gameState.territs.get(selection)!.owner == props.player;
+            let isTokenHovered = false;
+            let isTerritHovered = false;
+            if (hover.token) {
+                isTokenHovered = hover.token == name;
+                isTerritHovered = isTokenHovered;
+            } else if (hover.territory) {
+                isTerritHovered = hover.territory == name;
             }
-        }
-        const isHighlighted = highlights.includes(name);
-        const isTokenSelected = selection == name && territs.get(selection)!.owner == props.player;
-        let isTokenHovered = false;
-        let isTerritHovered = false;
-        if (hover.token) {
-            isTokenHovered = hover.token == name;
-            isTerritHovered = isTokenHovered;
-        } else if (hover.territory) {
-            isTerritHovered = hover.territory == name;
-        }
-        return (
-            <map-territory 
-                key={name}
-                name={name}
-                center={immut.center}
-                path={immut.path}
-                neighbours={immut.neighbours.join(' ')}
-                hovered={isTerritHovered}>
-                <map-troops
-                    amount={data.troops}
-                    additional={additionalTroops}
-                    color={players.get(data.owner)!.color}
-                    selected={isTokenSelected}
-                    hovered={isTokenHovered}
-                    highlighted={isHighlighted} />
-            </map-territory>
-        );
-    });
+            return (
+                <map-territory 
+                    key={name}
+                    name={name}
+                    center={immut.center}
+                    path={immut.path}
+                    neighbours={immut.neighbours.join(' ')}
+                    hovered={isTerritHovered}>
+                    <map-troops
+                        amount={data.troops}
+                        additional={additionalTroops}
+                        color={gameState.players.get(data.owner)!.color}
+                        selected={isTokenSelected}
+                        hovered={isTokenHovered}
+                        highlighted={isHighlighted} />
+                </map-territory>
+            );
+        });
 
-    return (
-        <React.Fragment>
-            <div className="phase-area">
-                {phasePanel}
-            </div>
-            <div className="map-area viewport">
+        mapPanel = (
+            <React.Fragment>
                 <MapView className="layer" onSelected={selectionHandler} onHover={hover => setHover(hover)}>
                     {renderedTerrits}
                     {arrows}
@@ -372,9 +412,20 @@ function App(props: AppProps) {
                 <div id="overlays" className="layer">
                     {deployDialog}
                 </div>
+            </React.Fragment>
+        );
+    }
+
+    return (
+        <React.Fragment>
+            <div className="phase-area">
+                {phasePanel}
+            </div>
+            <div className="map-area viewport">
+                {mapPanel}
             </div>
             <div className="control-area">
-                <ControlPanel territs={territs} players={players} activePlayer={'hawflakes'} />
+                {controlPanel}
             </div>
         </React.Fragment>
     );
@@ -387,7 +438,7 @@ type ActionRequest = {
 
 type DeployRequest = {
     player: string,
-    deployments: { [territ: string]: Number},
+    deployments: { [territ: string]: number},
 }
 
 type AttackRequest = {
@@ -396,7 +447,7 @@ type AttackRequest = {
     to: string,
 }
 
-async function sendAction(gameId: string, action: ActionRequest) {
+async function sendAction(gameId: string, action: ActionRequest): Promise<GameEvent[]> {
     const response = await fetch(`/api/v1/game/${gameId}`, {
         method: 'POST',
         body: JSON.stringify(action),
@@ -405,7 +456,23 @@ async function sendAction(gameId: string, action: ActionRequest) {
     if (!response.ok) {
         throw Error(`failed to send action: ${json.error}`);
     }
-    return json;
+    return json as GameEvent[];
+}
+
+function LoadingView() {
+    return (
+        <div style={{width: '100%', height: '100%', textAlign: 'center', display: 'flex', alignItems: 'center'}}>
+            <h2>Loading...</h2>
+        </div>
+    );
+}
+
+function ErrorView() {
+    return (
+        <div style={{width: '100%', height: '100%', textAlign: 'center', display: 'flex', alignItems: 'center'}}>
+            <h2>ERROR</h2>
+        </div>
+    );
 }
 
 window.onload = function () {

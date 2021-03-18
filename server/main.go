@@ -195,6 +195,7 @@ func NewTestGame(m *Map) *Game {
 	state.Territs["Arafan"] = &TerritoryMut{"hawflakes", 3}
 	state.Territs["Moncton"] = &TerritoryMut{"hawflakes", 1}
 	state.Territs["Creer"] = &TerritoryMut{"wahtever", 1}
+	state.Start()
 	return &Game{
 		lock:      sync.Mutex{},
 		state:     state,

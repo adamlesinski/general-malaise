@@ -62,8 +62,8 @@ type AttackEvent struct {
 type PhaseChangedEvent struct {
 	OldPlayer string `json:"old_player"`
 	NewPlayer string `json:"new_player"`
-	OldPhase  string `json:"old_phase"`
-	NewPhase  string `json:"new_phase"`
+	OldPhase  Phase  `json:"old_phase"`
+	NewPhase  Phase  `json:"new_phase"`
 }
 
 type TerritoryMut struct {
@@ -72,14 +72,40 @@ type TerritoryMut struct {
 }
 
 type Player struct {
-	Name       string `json:"name"`
-	Eliminated bool   `json:"eliminated"`
+	Name           string `json:"name"`
+	Color          string `json:"color"`
+	Eliminated     bool   `json:"eliminated"`
+	Reinforcements uint64 `json:"reinforcements"`
+	Troops         uint64 `json:"troops"`
+	Territories    uint64 `json:"territories"`
 }
 
+type Phase struct {
+	Lobby     *LobbyPhase     `json:"lobby"`
+	Deploy    *DeployPhase    `json:"deploy"`
+	Attack    *AttackPhase    `json:"attack"`
+	Advance   *AdvancePhase   `json:"advance"`
+	Reinforce *ReinforcePhase `json:"reinforce"`
+}
+
+type LobbyPhase struct {
+}
+
+type DeployPhase struct {
+	Reinforcements uint64 `json:"reinforcements"`
+}
+
+type AttackPhase struct{}
+
+type AdvancePhase struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
+type ReinforcePhase struct{}
+
 type GameState struct {
-	Phase        string                   `json:"phase"`
-	AdvanceFrom  string                   `json:"advance_from,omitempty"`
-	AdvanceTo    string                   `json:"advance_to,omitempty"`
+	Phase        Phase                    `json:"phase"`
 	ActivePlayer string                   `json:"active_player"`
 	Players      []*Player                `json:"players"`
 	Territs      map[string]*TerritoryMut `json:"territs"`
@@ -87,18 +113,69 @@ type GameState struct {
 }
 
 func NewGameState(player string, playerNames []string) GameState {
+	COLORS := []string{"red", "blue", "green", "yellow"}
 	var players []*Player
 	for idx := range playerNames {
 		players = append(players, &Player{
-			Name: playerNames[idx],
+			Name:  playerNames[idx],
+			Color: COLORS[idx],
 		})
 	}
 	return GameState{
-		Phase:        "deploy",
+		Phase:        Phase{Lobby: &LobbyPhase{}},
 		ActivePlayer: player,
 		Players:      players,
 		Territs:      make(map[string]*TerritoryMut),
 		Map:          "alpha",
+	}
+}
+
+func (g *GameState) Start() error {
+	if g.Phase.Lobby == nil {
+		return fmt.Errorf("game is already started")
+	}
+	g.initialDeploy()
+	g.calculateStats()
+	g.ActivePlayer = g.Players[0].Name
+	g.Phase = Phase{Deploy: &DeployPhase{
+		Reinforcements: g.findPlayer(g.ActivePlayer).Reinforcements,
+	}}
+	return nil
+}
+
+func (g *GameState) findPlayer(name string) *Player {
+	for idx := range g.Players {
+		if g.Players[idx].Name == name {
+			return g.Players[idx]
+		}
+	}
+	return nil
+}
+
+func (g *GameState) initialDeploy() {
+	// TODO: Distribute 3 troops to each territory
+}
+
+func (g *GameState) calculateStats() {
+	playerTerritCount := make(map[string]struct {
+		territs uint64
+		troops  uint64
+	})
+	for _, territ := range g.Territs {
+		counter := playerTerritCount[territ.Owner]
+		counter.territs += 1
+		counter.troops += territ.Troops
+		playerTerritCount[territ.Owner] = counter
+	}
+	for idx := range g.Players {
+		player := g.Players[idx]
+		counter := playerTerritCount[g.Players[idx].Name]
+		player.Territories = counter.territs
+		player.Troops = counter.troops
+		player.Reinforcements = player.Territories / 3
+		if player.Reinforcements < 3 {
+			player.Reinforcements = 3
+		}
 	}
 }
 
@@ -118,19 +195,20 @@ func (g *GameState) selectNextPlayer() {
 }
 
 func (g *GameState) ApplyAction(m *Map, action *Action) ([]*Event, error) {
-	switch g.Phase {
-	case "deploy":
+	if g.Phase.Deploy != nil {
 		return g.applyDeployAction(action.Deploy)
-	case "attack":
+	} else if g.Phase.Attack != nil {
 		if action.EndAttack != nil {
 			return g.applyEndAttackAction(action.EndAttack)
 		}
 		return g.applyAttackAction(m, action.Attack)
-	case "advance":
+	} else if g.Phase.Advance != nil {
 		return g.applyAdvanceAction(action.Advance)
-	case "reinforce":
+	} else if g.Phase.Reinforce != nil {
 		return g.applyReinforceAction(m, action.Reinforce)
-	default:
+	} else if g.Phase.Lobby != nil {
+		return nil, fmt.Errorf("game has not been started")
+	} else {
 		panic("invalid game phase")
 	}
 }
@@ -142,6 +220,7 @@ func (g *GameState) applyDeployAction(deploy *DeployAction) ([]*Event, error) {
 	if g.ActivePlayer != deploy.Player {
 		return nil, fmt.Errorf("it is not your turn")
 	}
+	player := g.findPlayer(deploy.Player)
 	for territ, troops := range deploy.Deployments {
 		territMut, found := g.Territs[territ]
 		if !found {
@@ -151,15 +230,19 @@ func (g *GameState) applyDeployAction(deploy *DeployAction) ([]*Event, error) {
 			return nil, fmt.Errorf("territory '%s' does not belong to you", territ)
 		}
 		territMut.Troops += troops
+
+		// Update the player's total troop count.
+		player.Troops += troops
 	}
-	g.Phase = "attack"
+	oldPhase := g.Phase
+	g.Phase = Phase{Attack: &AttackPhase{}}
 	return []*Event{
 		{Deploy: deploy},
 		{PhaseChanged: &PhaseChangedEvent{
 			OldPlayer: deploy.Player,
 			NewPlayer: deploy.Player,
-			OldPhase:  "deploy",
-			NewPhase:  "attack",
+			OldPhase:  oldPhase,
+			NewPhase:  g.Phase,
 		}},
 	}, nil
 }
@@ -233,6 +316,13 @@ func (g *GameState) applyAttackAction(m *Map, attack *AttackAction) ([]*Event, e
 	attacker_loss, defender_loss := attackerDieRolls.ResolveAgainstDefender(&defenderDieRolls)
 	from.Troops -= attacker_loss
 	to.Troops -= defender_loss
+
+	// Update the players' total troop counts.
+	fromPlayer := g.findPlayer(from.Owner)
+	toPlayer := g.findPlayer(to.Owner)
+	fromPlayer.Troops -= attacker_loss
+	toPlayer.Troops -= defender_loss
+
 	events := []*Event{
 		{
 			Attack: &AttackEvent{
@@ -247,17 +337,21 @@ func (g *GameState) applyAttackAction(m *Map, attack *AttackAction) ([]*Event, e
 		},
 	}
 	if to.Troops == 0 {
+		// Change ownership
 		to.Owner = from.Owner
 		from.Troops -= 1
 		to.Troops = 1
-		g.Phase = "advance"
-		g.AdvanceFrom = attack.From
-		g.AdvanceTo = attack.To
+
+		// Adjust all stats.
+		g.calculateStats()
+
+		oldPhase := g.Phase
+		g.Phase = Phase{Advance: &AdvancePhase{From: attack.From, To: attack.To}}
 		events = append(events, &Event{PhaseChanged: &PhaseChangedEvent{
 			OldPlayer: attack.Player,
 			NewPlayer: attack.Player,
-			OldPhase:  "attack",
-			NewPhase:  "advance",
+			OldPhase:  oldPhase,
+			NewPhase:  g.Phase,
 		}})
 	}
 	return events, nil
@@ -270,14 +364,15 @@ func (g *GameState) applyEndAttackAction(endAttack *EndAttackAction) ([]*Event, 
 	if g.ActivePlayer != endAttack.Player {
 		return nil, fmt.Errorf("it is not your turn")
 	}
-	g.Phase = "reinforce"
+	oldPhase := g.Phase
+	g.Phase = Phase{Reinforce: &ReinforcePhase{}}
 	return []*Event{
 		{
 			PhaseChanged: &PhaseChangedEvent{
 				OldPlayer: endAttack.Player,
 				NewPlayer: endAttack.Player,
-				OldPhase:  "attack",
-				NewPhase:  "reinforce",
+				OldPhase:  oldPhase,
+				NewPhase:  g.Phase,
 			},
 		},
 	}, nil
@@ -309,16 +404,15 @@ func (g *GameState) applyAdvanceAction(advance *MoveAction) ([]*Event, error) {
 	}
 	to.Troops += advance.Troops
 	from.Troops -= advance.Troops
-	g.Phase = "attack"
-	g.AdvanceFrom = ""
-	g.AdvanceTo = ""
+	oldPhase := g.Phase
+	g.Phase = Phase{Attack: &AttackPhase{}}
 	return []*Event{
 		{Advance: advance},
 		{PhaseChanged: &PhaseChangedEvent{
 			OldPlayer: advance.Player,
 			NewPlayer: advance.Player,
-			OldPhase:  "advance",
-			NewPhase:  "attack",
+			OldPhase:  oldPhase,
+			NewPhase:  g.Phase,
 		}},
 	}, nil
 }
@@ -352,15 +446,18 @@ func (g *GameState) applyReinforceAction(m *Map, reinforce *MoveAction) ([]*Even
 	}
 	to.Troops += reinforce.Troops
 	from.Troops -= reinforce.Troops
-	g.Phase = "deploy"
 	g.selectNextPlayer()
+	oldPhase := g.Phase
+	g.Phase = Phase{Deploy: &DeployPhase{
+		Reinforcements: g.findPlayer(g.ActivePlayer).Reinforcements,
+	}}
 	return []*Event{
 		{Reinforce: reinforce},
 		{PhaseChanged: &PhaseChangedEvent{
 			OldPlayer: reinforce.Player,
 			NewPlayer: g.ActivePlayer,
-			OldPhase:  "reinforce",
-			NewPhase:  "deploy",
+			OldPhase:  oldPhase,
+			NewPhase:  g.Phase,
 		}},
 	}, nil
 }

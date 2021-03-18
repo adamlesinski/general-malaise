@@ -1,23 +1,29 @@
 interface ControlPanelProps {
-    territs: Map<string, TerritoryData>,
     players: Map<string, Player>,
     activePlayer: string,
+    thisPlayer: string,
 }
 
 function ControlPanel(props: ControlPanelProps) {
     const rows = [...props.players.values()].map(player => {
-        const [territs, troops] = [...props.territs.values()]
-            .filter(territ => territ.owner == player.name)
-            .reduce(([prev_territs, prev_troops], territ) => {
-                return [prev_territs + 1, prev_troops + territ.troops];
-            }, [0, 0]);
+        let playerName = <span style={{color: player.color}}>{player.name}</span>
+        if (props.thisPlayer == player.name) {
+            playerName = <b>{playerName}</b>
+        }
+        if (props.activePlayer == player.name) {
+            playerName = <span>--&gt; {playerName} &lt;--</span>;
+        }
+        if (player.eliminated) {
+            playerName = <s>{playerName}</s>;
+        }
+        
         return (
             <tr key={player.name}>
-                <td>{player.name}</td>
+                <td>{playerName}</td>
                 <td>?</td>
-                <td>{territs}</td>
-                <td>{troops}</td>
-                <td>?</td>
+                <td>{player.territories}</td>
+                <td>{player.troops}</td>
+                <td>{player.reinforcements}</td>
             </tr>
         );
     });
