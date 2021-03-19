@@ -70,11 +70,11 @@ interface MapViewProps {
     onSelected?: (name: string | null) => void,
     onHover?: (hover: Hover) => void,
     children?: React.ReactNode,
+    overlays?: React.ReactElement[],
 }
 
 function MapView(props: MapViewProps) {
     const mapRef: React.Ref<MapViewElement> = React.useRef(null);
-
     React.useEffect(() => {
         if (props.onSelected) {
             const onSelected = props.onSelected;
@@ -109,7 +109,17 @@ function MapView(props: MapViewProps) {
             return () => mapView.removeEventListener('map:hover', listener as EventListener);
         }
     }, [props.onHover]);
-    return <map-view ref={mapRef} className={props.className}>{props.children}</map-view>;
+    React.useEffect(() => {
+        mapRef.current?.invalidateMap();
+    }, [props.overlays]);
+    return (
+        <React.Fragment>
+            <map-view ref={mapRef} className="layer">{props.children}</map-view>
+            <div id="overlays" className="layer">
+                {props.overlays}
+            </div>
+        </React.Fragment>
+    );
 }
 
 function useExpensiveRef<T>(initial: () => T) {
@@ -481,15 +491,10 @@ function App(props: AppProps) {
         });
 
         mapPanel = (
-            <React.Fragment>
-                <MapView className="layer" onSelected={selectionHandler} onHover={hover => setHover(hover)}>
-                    {renderedTerrits}
-                    {arrows}
-                </MapView>
-                <div id="overlays" className="layer">
-                    {overlays}
-                </div>
-            </React.Fragment>
+            <MapView onSelected={selectionHandler} onHover={hover => setHover(hover)} overlays={overlays}>
+                {renderedTerrits}
+                {arrows}
+            </MapView>
         );
     }
 
