@@ -317,7 +317,8 @@ class MapViewElement extends MapElement {
                 const distance = TOKEN_RADIUS + TOKEN_ADDITIONAL_RADIUS;
                 const additionalX = center.x + (distance * Math.sin(Math.PI / 4));
                 const additionalY = center.y - (distance * Math.cos(Math.PI / 4));
-                ctx.fillText(`+${token.additional}`, additionalX, additionalY);
+                const sign = token.additional < 0 ? "-" : "+";
+                ctx.fillText(`${sign}${Math.abs(token.additional)}`, additionalX, additionalY);
             }
         }
         ctx.restore();

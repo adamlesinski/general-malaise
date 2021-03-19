@@ -454,11 +454,19 @@ function App(props: AppProps) {
 
         const renderedTerrits = [...gameState.territs.entries()].map(([name, data]) => {
             const immut = territsImmut.get(name)!;
+            let troops = data.troops;
             let additionalTroops = 0;
             if (clientDeployState) {
                 const deployments = clientDeployState.request.deployments[name];
                 if (deployments) {
                     additionalTroops = deployments;
+                }
+            } else if (phase.advance) {
+                const advanceTroops = clientAdvanceState ? clientAdvanceState.troops : gameState.territs.get(phase.advance.from)!.troops - 1;
+                if (phase.advance.from == name) {
+                    troops -= advanceTroops;
+                } else if (phase.advance.to == name) {
+                    troops += advanceTroops;
                 }
             }
             const isHighlighted = highlights.includes(name);
@@ -480,7 +488,7 @@ function App(props: AppProps) {
                     neighbours={immut.neighbours.join(' ')}
                     hovered={isTerritHovered}>
                     <map-troops
-                        amount={data.troops}
+                        amount={troops}
                         additional={additionalTroops}
                         color={gameState.players.get(data.owner)!.color}
                         selected={isTokenSelected}
