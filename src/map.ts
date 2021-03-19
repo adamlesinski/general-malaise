@@ -184,8 +184,8 @@ class MapViewElement extends MapElement {
     }
 
     _updateOverlays(transform: DOMMatrix) {
-        for (const overlay of document.getElementById('overlays')!.querySelectorAll('[data-tracking]') as NodeListOf<HTMLElement>) {
-            const territ = this.querySelector(`map-territory[name=${overlay.getAttribute('data-tracking')}]`) as MapTerritoryElement;
+        for (const overlay of document.getElementById('overlays')!.querySelectorAll<HTMLElement>('[data-tracking]')) {
+            const territ = this.querySelector<MapTerritoryElement>(`map-territory[name="${overlay.getAttribute('data-tracking')}"]`)!;
             const center = transform.transformPoint(territ.center);
             const newLeft = `${center.x - (50 * 0.5)}px`;
             const newTop = `${center.y - (50 + TOKEN_RADIUS)}px`;
@@ -215,9 +215,11 @@ class MapViewElement extends MapElement {
     _pickTerritory(event: MouseEvent): MapTerritoryElement | null {
         const transform = this._territoryInverseTransform();
         const mapPoint = transform.transformPoint(new DOMPoint(event.offsetX, event.offsetY));
-        for (const territory of this.querySelectorAll('map-territory') as NodeListOf<MapTerritoryElement>) {
-            if (this._ctx!.isPointInPath(territory.path!, mapPoint.x, mapPoint.y)) {
-                return territory;
+        for (const territory of this.querySelectorAll<MapTerritoryElement>('map-territory')) {
+            for (const path of territory.querySelectorAll<MapPathElement>('map-path')) {
+                if (this._ctx!.isPointInPath(path.path, mapPoint.x, mapPoint.y)) {
+                    return territory;
+                }
             }
         }
         return null;
@@ -225,13 +227,12 @@ class MapViewElement extends MapElement {
 
     _pickToken(event: MouseEvent): MapTroopsElement | null {
         const transform = this._territoryTransform();
-        for (const token of this.querySelectorAll('map-troops')) {
-            const territ = token.parentElement! as MapTerritoryElement;
-            const center = transform.transformPoint(territ.center);
+        for (const token of this.querySelectorAll<MapTroopsElement>('map-troops')) {
+            const center = transform.transformPoint(token.territory!.center);
             const dx = center.x - event.offsetX;
             const dy = center.y - event.offsetY;
             if ((dx * dx) + (dy * dy) < TOKEN_RADIUS * TOKEN_RADIUS) {
-                return token as MapTroopsElement;
+                return token;
             }
         }
         return null;
@@ -260,28 +261,31 @@ class MapViewElement extends MapElement {
         const territoryTransform = this._territoryTransform();
         ctx.setTransform(ctx.getTransform().multiplySelf(territoryTransform));
         ctx.strokeStyle = 'black';
-        for (const territory of this.querySelectorAll('map-territory') as NodeListOf<MapTerritoryElement>) {
-            ctx.stroke(territory.path!);
+        for (const territory of this.querySelectorAll<MapTerritoryElement>('map-territory')) {
+            for (const path of territory.querySelectorAll<MapPathElement>('map-path')) {
+                ctx.stroke(path.path);
+            }
         }
         
         // Draw hovered territory.
-        const hoveredTerrit = this.querySelector('map-territory[hovered=true]') as MapTerritoryElement | null;
+        const hoveredTerrit = this.querySelector<MapPathElement>('map-territory[hovered=true]');
         if (hoveredTerrit) {
             ctx.strokeStyle = 'green';
-            ctx.stroke(hoveredTerrit.path);
+            for (const path of hoveredTerrit.querySelectorAll<MapPathElement>('map-path')) {
+                ctx.stroke(path.path);
+            }
         }
         ctx.restore();
         
         // Draw the tokens.
-        const tokenList = this.querySelectorAll('map-troops') as NodeListOf<MapTroopsElement>;
+        const tokenList = this.querySelectorAll<MapTroopsElement>('map-troops');
         const tokenColorMap = tokenList.groupBy(node => node.color);
         for (const [color, tokens] of tokenColorMap) {
             ctx.save();
             ctx.fillStyle = color;
             ctx.beginPath();
             for (const token of tokens) {
-                const territ = token.parentElement! as MapTerritoryElement;
-                const center = territoryTransform.transformPoint(territ.center);
+                const center = territoryTransform.transformPoint(token.territory!.center);
                 ctx.moveTo(center.x, center.y);
                 ctx.arc(center.x, center.y, TOKEN_RADIUS, 0, Math.PI * 2);
 
@@ -305,15 +309,13 @@ class MapViewElement extends MapElement {
         ctx.font = `${TOKEN_RADIUS * 1.5}px sans-serif`;
         ctx.beginPath();
         for (const token of tokenList) {
-            const territ = token.parentElement! as MapTerritoryElement;
-            const center = territoryTransform.transformPoint(territ.center);
+            const center = territoryTransform.transformPoint(token.territory!.center);
             ctx.fillText(token.amount.toString(), center.x, center.y);
         }
         ctx.font = `${TOKEN_ADDITIONAL_RADIUS * 1.5}px sans-serif`;
         for (const token of tokenList) {
             if (token.additional) {
-                const territ = token.parentElement! as MapTerritoryElement;
-                const center = territoryTransform.transformPoint(territ.center);
+                const center = territoryTransform.transformPoint(token.territory!.center);
                 const distance = TOKEN_RADIUS + TOKEN_ADDITIONAL_RADIUS;
                 const additionalX = center.x + (distance * Math.sin(Math.PI / 4));
                 const additionalY = center.y - (distance * Math.cos(Math.PI / 4));
@@ -324,12 +326,12 @@ class MapViewElement extends MapElement {
         ctx.restore();
 
         // Draw the arrows.
-        const arrowList = this.querySelectorAll('map-arrow') as NodeListOf<MapArrowElement>;
+        const arrowList = this.querySelectorAll<MapArrowElement>('map-arrow');
         for (const arrowElement of arrowList) {
             ctx.save();
             ctx.fillStyle = arrowElement.color;
-            const srcEl = this.querySelector(`map-territory[name=${arrowElement.src}]`)! as MapTerritoryElement;
-            const dstEl = this.querySelector(`map-territory[name=${arrowElement.dst}]`)! as MapTerritoryElement;
+            const srcEl = this.querySelector<MapTerritoryElement>(`map-territory[name="${arrowElement.src}"]`)!
+            const dstEl = this.querySelector<MapTerritoryElement>(`map-territory[name="${arrowElement.dst}"]`)!;
             const src = territoryTransform.transformPoint(srcEl.center);
             const dst = territoryTransform.transformPoint(dstEl.center);
             ctx.translate(src.x, src.y);
@@ -352,14 +354,13 @@ class MapViewElement extends MapElement {
         }
 
         // Draw the selected token.
-        const selectedTerrit = this.querySelector('map-troops[selected=true]') as MapTerritoryElement | null;
+        const selectedTerrit = this.querySelector<MapTroopsElement>('map-troops[selected=true]');
         if (selectedTerrit) {
             ctx.save();
             ctx.strokeStyle = 'black';
             ctx.lineWidth = 2;
             ctx.beginPath();
-            const territ = selectedTerrit.parentElement! as MapTerritoryElement;
-            const center = territoryTransform.transformPoint(territ.center);
+            const center = territoryTransform.transformPoint(selectedTerrit.territory!.center);
             ctx.arc(center.x, center.y, TOKEN_RADIUS, 0, Math.PI * 2);
             ctx.stroke();
             ctx.restore();
@@ -373,8 +374,7 @@ class MapViewElement extends MapElement {
         for (const token of tokenList) {
             if (token.highlighted) {
                 ctx.beginPath();
-                const territ = token.parentElement! as MapTerritoryElement;
-                const center = territoryTransform.transformPoint(territ.center);
+                const center = territoryTransform.transformPoint(token.territory!.center);
                 ctx.arc(center.x, center.y, TOKEN_RADIUS, 0, Math.PI * 2);
                 ctx.stroke();
             }
@@ -394,18 +394,16 @@ class MapViewElement extends MapElement {
 
 class MapTerritoryElement extends MapElement {
     static get observedAttributes(): string[] {
-        return ['name', 'neighbours', 'path', 'center', 'hovered'];
+        return ['name', 'neighbours', 'center', 'hovered'];
     }
 
     private _name: string = '';
     private _neighbours: string[] = [];
-    private _path: Path2D = new Path2D();
     private _center: DOMPoint = new DOMPoint(0, 0);
     private _hovered: boolean = false;
 
     get name(): string { return this._name; }
     get neighbours(): string[] { return this._neighbours; }
-    get path(): Path2D { return this._path; }
     get center(): DOMPoint { return this._center; }
     get hovered(): boolean { return this._hovered; }
 
@@ -413,7 +411,6 @@ class MapTerritoryElement extends MapElement {
         switch (name) {
             case 'name': this._name = newValue; break;
             case 'neighbours': this._neighbours = newValue.split(' '); break;
-            case 'path': this._path = new Path2D(newValue); break;
             case 'center': {
                 const tokens = newValue.split(' ');
                 if (tokens.length != 2) {
@@ -428,6 +425,24 @@ class MapTerritoryElement extends MapElement {
         this.invalidateMap();
     }
 }
+
+class MapPathElement extends MapElement {
+    static get observedAttributes(): string[] {
+        return ['path'];
+    }
+
+    private _path: Path2D = new Path2D();
+    
+    get path(): Path2D { return this._path; }
+    
+    attributeChangedCallback(name: string, _oldValue: string, newValue: string) {
+        switch (name) {
+            case 'path': this._path = new Path2D(newValue); break;
+        }
+        this.invalidateMap();
+    }
+}
+
 
 class MapTroopsElement extends MapElement {
     static get observedAttributes(): string[] {
@@ -487,5 +502,6 @@ class MapArrowElement extends MapElement {
 
 customElements.define('map-view', MapViewElement);
 customElements.define('map-territory', MapTerritoryElement);
+customElements.define('map-path', MapPathElement);
 customElements.define('map-troops', MapTroopsElement);
 customElements.define('map-arrow', MapArrowElement);

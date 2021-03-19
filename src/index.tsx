@@ -6,7 +6,7 @@ interface TerritoryData {
 interface TerritoryImmutableProps {
     neighbours: string[],
     center: string,
-    path: string,
+    paths: string[],
 }
 
 interface Player {
@@ -466,14 +466,15 @@ function App(props: AppProps) {
             } else if (hover.territory) {
                 isTerritHovered = hover.territory == name;
             }
+            const mapPaths = immut.paths.map((p, i) => <map-path key={`${name}:${i}`} path={p} />);
             return (
                 <map-territory 
                     key={name}
                     name={name}
                     center={immut.center}
-                    path={immut.path}
                     neighbours={immut.neighbours.join(' ')}
                     hovered={isTerritHovered}>
+                    {mapPaths}
                     <map-troops
                         amount={troops}
                         additional={additionalTroops}

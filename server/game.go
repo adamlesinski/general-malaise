@@ -113,7 +113,7 @@ type GameState struct {
 	Map          string                   `json:"map"`
 }
 
-func NewGameState(player string, playerNames []string) GameState {
+func NewGameState(player string, playerNames []string, mapName string) GameState {
 	COLORS := []string{"red", "blue", "green", "yellow"}
 	var players []*Player
 	for idx := range playerNames {
@@ -127,15 +127,15 @@ func NewGameState(player string, playerNames []string) GameState {
 		ActivePlayer: player,
 		Players:      players,
 		Territs:      make(map[string]*TerritoryMut),
-		Map:          "alpha",
+		Map:          mapName,
 	}
 }
 
-func (g *GameState) Start() error {
+func (g *GameState) Start(m *Map) error {
 	if g.Phase.Lobby == nil {
 		return fmt.Errorf("game is already started")
 	}
-	g.initialDeploy()
+	g.initialDeploy(m)
 	g.calculateStats()
 	g.ActivePlayer = g.Players[0].Name
 	g.Phase = Phase{Deploy: &DeployPhase{
@@ -153,8 +153,23 @@ func (g *GameState) findPlayer(name string) *Player {
 	return nil
 }
 
-func (g *GameState) initialDeploy() {
-	// TODO: Distribute 3 troops to each territory
+func (g *GameState) initialDeploy(m *Map) {
+	var territs []string
+	for territName := range m.Territs {
+		territs = append(territs, territName)
+	}
+	rand.Shuffle(len(territs), func(i int, j int) {
+		tmp := territs[i]
+		territs[i] = territs[j]
+		territs[j] = tmp
+	})
+	playerCount := len(g.Players)
+	for idx := range territs {
+		g.Territs[territs[idx]] = &TerritoryMut{
+			Owner:  g.Players[idx%playerCount].Name,
+			Troops: 3,
+		}
+	}
 }
 
 func (g *GameState) calculateStats() {

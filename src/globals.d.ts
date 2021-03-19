@@ -7,6 +7,7 @@ declare namespace JSX {
     interface IntrinsicElements {
         ['map-view']: any,
         ['map-territory']: any,
+        ['map-path']: any,
         ['map-troops']: any, 
         ['map-arrow']: any,
     }

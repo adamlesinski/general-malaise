@@ -8,7 +8,7 @@ type Map struct {
 type Territory struct {
 	Neighbours []string `json:"neighbours"`
 	Center     string   `json:"center"`
-	Path       string   `json:"path"`
+	Paths      []string `json:"paths"`
 }
 
 func (m *Map) IsAdjacent(from string, to string) bool {
