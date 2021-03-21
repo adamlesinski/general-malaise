@@ -44,3 +44,20 @@ function ControlPanel(props: ControlPanelProps) {
         </table>
     );
 }
+
+interface TerritoryDetailsProps {
+    name: string,
+    owner: string,
+    troops: number,
+    neighbours: string[],
+}
+
+function TerritoryDetails(props: TerritoryDetailsProps) {
+    return (
+        <div>
+            <p><b>{props.name}</b></p>
+            <p>Owned by <u>{props.owner}</u> with <b>{props.troops}</b> troops</p>
+            <p>Neighbours: {props.neighbours.join(', ')}</p>
+        </div>
+    );
+}

@@ -152,7 +152,7 @@ func NewTestMapHongKong() *Map {
 				},
 			},
 			"Lamma Island": {
-				Neighbours: []string{"Lantau Island", "Po Toi"},
+				Neighbours: []string{"Lantau Island", "Po Toi", "Southern"},
 				Center:     "681 955",
 				Color:      "#e6b350",
 				Paths: []string{

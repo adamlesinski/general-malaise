@@ -307,20 +307,20 @@ function App(props: AppProps) {
     const [gameState, gameStateLoading, gameStateError, applyEvent] = useGameState(props.gameId);
     const [clientDeployState, setClientDeployState] = React.useState<ClientDeployState|null>(null);
     const [clientAdvanceState, setClientAdvanceState] = React.useState<ClientAdvanceState|null>(null);
-    const [selection, setSelection] = React.useState(null as string | null);
-    const [hover, setHover] = React.useState({ territory: null, token: null } as Hover);
+    const [selection, setSelection] = React.useState<string|null>(null);
+    const [hover, setHover] = React.useState<Hover>({ territory: null, token: null });
 
     let phasePanel = null;
-    let controlPanel = null;
+    let controlPanels: React.ReactElement[] = [];
     let mapPanel = null;
     let nonRenderingComponents: React.ReactElement[] = [];
     if (gameStateLoading) {
         phasePanel = <LoadingGamePanel />
-        controlPanel = <LoadingView />;
+        controlPanels.push(<LoadingView key="loading" />);
         mapPanel = <LoadingView />;
     } else if (gameStateError) {
         phasePanel = <ErrorGamePanel message={gameStateError} />
-        controlPanel = <ErrorView />
+        controlPanels.push(<ErrorView key="error" />);
         mapPanel = <ErrorView />
     } else if (gameState) {
         const territsImmut = gameState.territsImmut;
@@ -331,7 +331,19 @@ function App(props: AppProps) {
         let arrows: React.ReactElement[] = [];
         let selectionHandler: ((name: string | null) => void) | undefined = undefined;
 
-        controlPanel = <ControlPanel players={gameState.players} activePlayer={gameState.active_player} thisPlayer={props.player} />
+        controlPanels.push(
+            <ControlPanel key="player-stats" players={gameState.players} activePlayer={gameState.active_player} thisPlayer={props.player} />
+        );
+
+        {
+            const hoveredTerrit = hover.territory || hover.token;
+            if (hoveredTerrit) {
+                const territData = territs.get(hoveredTerrit)!
+                const territProps = territsImmut.get(hoveredTerrit)!;
+                controlPanels.push(<div key="spacer" className="expand" />);
+                controlPanels.push(<TerritoryDetails key="territ-details" name={hoveredTerrit} owner={territData.owner} troops={territData.troops} neighbours={territProps.neighbours} />);
+            }
+        }
 
         if (gameState.active_player !== props.player) {
             phasePanel = <WaitingPanel />;
@@ -536,8 +548,8 @@ function App(props: AppProps) {
             <div className="map-area viewport">
                 {mapPanel}
             </div>
-            <div className="control-area">
-                {controlPanel}
+            <div className="control-area stack">
+                {controlPanels}
             </div>
             {nonRenderingComponents}
         </React.Fragment>

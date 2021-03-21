@@ -64,6 +64,15 @@ map-view * {
     pointer-events: all;
 }
 
+.stack {
+    display: flex;
+    flex-direction: column;
+}
+
+.stack > .expand {
+    flex-grow: 1;
+}
+
 @media (orientation: portrait) {
     .frame {
         grid-template-columns: 1fr;

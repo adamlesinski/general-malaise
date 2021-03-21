@@ -397,7 +397,6 @@ func (g *GameState) applyAttackAction(m *Map, attack *AttackAction) ([]*Event, e
 				Conquered:      to.Troops == 0,
 			},
 		},
-		{StatsChanged: g.statsUpdate()},
 	}
 	if to.Troops == 0 {
 		// Change ownership
@@ -417,6 +416,7 @@ func (g *GameState) applyAttackAction(m *Map, attack *AttackAction) ([]*Event, e
 			NewPhase:  g.Phase,
 		}})
 	}
+	events = append(events, &Event{StatsChanged: g.statsUpdate()})
 	return events, nil
 }
 
