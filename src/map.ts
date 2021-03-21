@@ -262,7 +262,9 @@ class MapViewElement extends MapElement {
         ctx.setTransform(ctx.getTransform().multiplySelf(territoryTransform));
         ctx.strokeStyle = 'black';
         for (const territory of this.querySelectorAll<MapTerritoryElement>('map-territory')) {
+            ctx.fillStyle = territory.color;
             for (const path of territory.querySelectorAll<MapPathElement>('map-path')) {
+                ctx.fill(path.path);
                 ctx.stroke(path.path);
             }
         }
@@ -394,17 +396,19 @@ class MapViewElement extends MapElement {
 
 class MapTerritoryElement extends MapElement {
     static get observedAttributes(): string[] {
-        return ['name', 'neighbours', 'center', 'hovered'];
+        return ['name', 'neighbours', 'center', 'color', 'hovered'];
     }
 
     private _name: string = '';
     private _neighbours: string[] = [];
     private _center: DOMPoint = new DOMPoint(0, 0);
+    private _color: string = 'white';
     private _hovered: boolean = false;
 
     get name(): string { return this._name; }
     get neighbours(): string[] { return this._neighbours; }
     get center(): DOMPoint { return this._center; }
+    get color(): string { return this._color; }
     get hovered(): boolean { return this._hovered; }
 
     attributeChangedCallback(name: string, _oldValue: string, newValue: string) {
@@ -420,6 +424,7 @@ class MapTerritoryElement extends MapElement {
                 this._center.y = parseFloat(tokens[1].trim());
                 break;
             }
+            case 'color': this._color = newValue; break;
             case 'hovered': this._hovered = (newValue.toLowerCase() == 'true'); break;
         }
         this.invalidateMap();

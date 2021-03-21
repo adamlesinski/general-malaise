@@ -3,12 +3,20 @@ package main
 type Map struct {
 	AssetPath string                `json:"asset_path"`
 	Territs   map[string]*Territory `json:"territs"`
+	Regions   map[string]*Region    `json:"regions"`
 }
 
 type Territory struct {
 	Neighbours []string `json:"neighbours"`
 	Center     string   `json:"center"`
 	Paths      []string `json:"paths"`
+	Color      string   `json:"color"`
+}
+
+type Region struct {
+	Territs []string `json:"territs"`
+	Color   string   `json:"color"`
+	Bonus   uint64   `json:"bonus"`
 }
 
 func (m *Map) IsAdjacent(from string, to string) bool {

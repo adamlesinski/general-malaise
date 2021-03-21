@@ -43,6 +43,7 @@ type Event struct {
 	Advance      *MoveAction        `json:"advance,omitempty"`
 	Reinforce    *MoveAction        `json:"reinforce,omitempty"`
 	PhaseChanged *PhaseChangedEvent `json:"phase_changed,omitempty"`
+	StatsChanged *StatsChangedEvent `json:"stats_changed,omitempty"`
 }
 
 type DeployEvent struct {
@@ -65,6 +66,16 @@ type PhaseChangedEvent struct {
 	NewPlayer string `json:"new_player"`
 	OldPhase  Phase  `json:"old_phase"`
 	NewPhase  Phase  `json:"new_phase"`
+}
+
+type StatsChangedEvent struct {
+	Updates map[string]*StatsUpdate `json:"updates"`
+}
+
+type StatsUpdate struct {
+	Territories    uint64 `json:"territories"`
+	Troops         uint64 `json:"troops"`
+	Reinforcements uint64 `json:"reinforcements"`
 }
 
 type TerritoryMut struct {
@@ -136,7 +147,7 @@ func (g *GameState) Start(m *Map) error {
 		return fmt.Errorf("game is already started")
 	}
 	g.initialDeploy(m)
-	g.calculateStats()
+	g.calculateStats(m)
 	g.ActivePlayer = g.Players[0].Name
 	g.Phase = Phase{Deploy: &DeployPhase{
 		Reinforcements: g.findPlayer(g.ActivePlayer).Reinforcements,
@@ -172,7 +183,7 @@ func (g *GameState) initialDeploy(m *Map) {
 	}
 }
 
-func (g *GameState) calculateStats() {
+func (g *GameState) calculateStats(m *Map) {
 	playerTerritCount := make(map[string]struct {
 		territs uint64
 		troops  uint64
@@ -192,6 +203,37 @@ func (g *GameState) calculateStats() {
 		if player.Reinforcements < 3 {
 			player.Reinforcements = 3
 		}
+
+		// Calculate region bonuses
+		for _, region := range m.Regions {
+			if g.playerOwnsRegion(player.Name, region) {
+				player.Reinforcements += region.Bonus
+			}
+		}
+	}
+}
+
+func (g *GameState) playerOwnsRegion(player string, region *Region) bool {
+	for _, territ := range region.Territs {
+		if g.Territs[territ].Owner != player {
+			return false
+		}
+	}
+	return true
+}
+
+func (g *GameState) statsUpdate() *StatsChangedEvent {
+	s := make(map[string]*StatsUpdate)
+	for idx := range g.Players {
+		player := g.Players[idx]
+		s[player.Name] = &StatsUpdate{
+			Territories:    player.Territories,
+			Troops:         player.Troops,
+			Reinforcements: player.Reinforcements,
+		}
+	}
+	return &StatsChangedEvent{
+		Updates: s,
 	}
 }
 
@@ -257,6 +299,7 @@ func (g *GameState) applyDeployAction(deploy *DeployAction) ([]*Event, error) {
 	g.Phase = Phase{Attack: &AttackPhase{}}
 	return []*Event{
 		{Deploy: deploy},
+		{StatsChanged: g.statsUpdate()},
 		{PhaseChanged: &PhaseChangedEvent{
 			OldPlayer: deploy.Player,
 			NewPlayer: deploy.Player,
@@ -354,6 +397,7 @@ func (g *GameState) applyAttackAction(m *Map, attack *AttackAction) ([]*Event, e
 				Conquered:      to.Troops == 0,
 			},
 		},
+		{StatsChanged: g.statsUpdate()},
 	}
 	if to.Troops == 0 {
 		// Change ownership
@@ -362,7 +406,7 @@ func (g *GameState) applyAttackAction(m *Map, attack *AttackAction) ([]*Event, e
 		to.Troops = 1
 
 		// Adjust all stats.
-		g.calculateStats()
+		g.calculateStats(m)
 
 		oldPhase := g.Phase
 		g.Phase = Phase{Advance: &AdvancePhase{From: attack.From, To: attack.To}}

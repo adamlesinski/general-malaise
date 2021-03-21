@@ -7,6 +7,13 @@ interface TerritoryImmutableProps {
     neighbours: string[],
     center: string,
     paths: string[],
+    color: string,
+}
+
+type Region = {
+    territs: string[],
+    color: string,
+    bonus: number,
 }
 
 interface Player {
@@ -136,6 +143,7 @@ type GameState = {
     players: Map<string, Player>,
 	territs: Map<string, TerritoryData>,
     territsImmut: Map<string, TerritoryImmutableProps>,
+    regions: Map<string, Region>,
 }
 
 type GameEvent = {
@@ -143,6 +151,7 @@ type GameEvent = {
     attack?: AttackEvent,
     advance?: AdvanceEvent,
     phase_changed?: PhaseChangedEvent,
+    stats_changed?: StatsChangedEvent,
 }
 
 type DeployEvent = DeployRequest;
@@ -167,6 +176,16 @@ type PhaseChangedEvent = {
     new_phase: Phase,
 }
 
+type StatsChangedEvent = {
+    updates: { [name: string]: StatsUpdate },
+}
+
+type StatsUpdate = {
+    territories: number,
+    troops: number,
+    reinforcements: number,
+}
+
 async function fetchGameState(gameId: string): Promise<GameState> {
     const response = await fetch(`/api/v1/game/${gameId}`);
     const json = await response.json();
@@ -186,6 +205,11 @@ async function fetchGameState(gameId: string): Promise<GameState> {
     for (const [name, territ] of Object.entries(mapJson.territs)) {
         territsImmut.set(name, territ);
     }
+
+    const regions = new Map();
+    for (const [name, region] of Object.entries(mapJson.regions)) {
+        regions.set(name, region);
+    }
     
     const players = new Map();
     for (const player of json.players) {
@@ -195,7 +219,7 @@ async function fetchGameState(gameId: string): Promise<GameState> {
     for (const [name, territ] of Object.entries(json.territs)) {
         territs.set(name, territ);
     }
-    return {...json, players: players, territs: territs, territsImmut: territsImmut};
+    return {...json, players: players, territs: territs, territsImmut: territsImmut, regions: regions};
 }
 
 function advanceGameState(current: GameState, event: GameEvent): GameState {
@@ -233,6 +257,15 @@ function advanceGameState(current: GameState, event: GameEvent): GameState {
         return {...current, territs: updatedTerrits};
     } else if (event.phase_changed) {
         return {...current, active_player: event.phase_changed.new_player, phase: event.phase_changed.new_phase };
+    } else if (event.stats_changed) {
+        const players = new Map();
+        for (const [name, update] of Object.entries(event.stats_changed.updates)) {
+            players.set(name, {
+                ...current.players.get(name)!,
+                ...update
+            });
+        }
+        return {...current, players: players};
     } else {
         throw new Error('unrecognized event');
     }
@@ -473,6 +506,7 @@ function App(props: AppProps) {
                     name={name}
                     center={immut.center}
                     neighbours={immut.neighbours.join(' ')}
+                    color={immut.color}
                     hovered={isTerritHovered}>
                     {mapPaths}
                     <map-troops
