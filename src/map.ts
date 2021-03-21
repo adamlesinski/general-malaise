@@ -36,6 +36,8 @@ class MapElement extends HTMLElement {
     }
 }
 
+const MIN_SCALE = 0.68;
+
 class MapViewElement extends MapElement {
     private _canvas: HTMLCanvasElement;
     private _ctx: CanvasRenderingContext2D | null = null;
@@ -43,9 +45,9 @@ class MapViewElement extends MapElement {
     private _panning: boolean = false;
     private _mouseDownOrigin: DOMPoint | null = null;
     private _ignoreClick: boolean = false;
-    private _anchorPoint: DOMPoint = new DOMPoint(0, 0);
-    private _pointOfInterest: DOMPoint = new DOMPoint(0, 0);
-    private _mapScale: number = 1.0;
+    private _anchorPoint: DOMPoint = new DOMPoint(511, 288);
+    private _pointOfInterest: DOMPoint = new DOMPoint(686, 422);
+    private _mapScale: number = MIN_SCALE;
     private _resizeObserver: ResizeObserver;
     private _mutationObserver: MutationObserver;
     private _lastHover: MapHoverTarget | null = null;
@@ -150,6 +152,9 @@ class MapViewElement extends MapElement {
             this._anchorPoint.x = event.offsetX;
             this._anchorPoint.y = event.offsetY;
             this._pointOfInterest = transform.transformPoint(this._anchorPoint);
+            console.log('scale=', this._mapScale);
+            console.log('poi=', this._pointOfInterest);
+            console.log('anc=', this._anchorPoint);
 
             this._canvas.removeEventListener('mouseup', this._mouseUp);
             this._canvas.removeEventListener('mouseleave', this._mouseUp);    
@@ -178,7 +183,7 @@ class MapViewElement extends MapElement {
         this._mapScale += event.deltaY * -0.01;
 
         // Restrict scale
-        this._mapScale = Math.min(Math.max(1.0, this._mapScale), 8);
+        this._mapScale = Math.min(Math.max(MIN_SCALE, this._mapScale), 8);
 
         this.invalidateMap();
     }
