@@ -149,7 +149,8 @@ type GameState = {
 type GameEvent = {
     deploy?: DeployEvent,
     attack?: AttackEvent,
-    advance?: AdvanceEvent,
+    advance?: MoveEvent,
+    reinforce?: MoveEvent,
     phase_changed?: PhaseChangedEvent,
     stats_changed?: StatsChangedEvent,
 }
@@ -167,7 +168,7 @@ type AttackEvent = {
     conquered: boolean,
 }
 
-type AdvanceEvent = MoveRequest;
+type MoveEvent = MoveRequest;
 
 type PhaseChangedEvent = {
     old_player: string,
@@ -246,14 +247,15 @@ function advanceGameState(current: GameState, event: GameEvent): GameState {
         updatedTerrits.set(event.attack.from, fromTerrit);
         updatedTerrits.set(event.attack.to, toTerrit);
         return {...current, territs: updatedTerrits};
-    } else if (event.advance) {
+    } else if (event.advance || event.reinforce) {
+        const moveEvent = (event.advance || event.reinforce)!;
         const updatedTerrits = new Map(current.territs);
-        const fromTerrit = {...updatedTerrits.get(event.advance.from)!};
-        fromTerrit.troops -= event.advance.troops;
-        const toTerrit = {...updatedTerrits.get(event.advance.to)!};
-        toTerrit.troops += event.advance.troops;
-        updatedTerrits.set(event.advance.from, fromTerrit);
-        updatedTerrits.set(event.advance.to, toTerrit);
+        const fromTerrit = {...updatedTerrits.get(moveEvent.from)!};
+        fromTerrit.troops -= moveEvent.troops;
+        const toTerrit = {...updatedTerrits.get(moveEvent.to)!};
+        toTerrit.troops += moveEvent.troops;
+        updatedTerrits.set(moveEvent.from, fromTerrit);
+        updatedTerrits.set(moveEvent.to, toTerrit);
         return {...current, territs: updatedTerrits};
     } else if (event.phase_changed) {
         return {...current, active_player: event.phase_changed.new_player, phase: event.phase_changed.new_phase };
@@ -303,10 +305,16 @@ type ClientAdvanceState = {
     troops: number,
 }
 
+type ClientReinforceState = {
+    target: string,
+    troops: number,
+}
+
 function App(props: AppProps) {
     const [gameState, gameStateLoading, gameStateError, applyEvent] = useGameState(props.gameId);
     const [clientDeployState, setClientDeployState] = React.useState<ClientDeployState|null>(null);
     const [clientAdvanceState, setClientAdvanceState] = React.useState<ClientAdvanceState|null>(null);
+    const [clientReinforceState, setClientReinforceState] = React.useState<ClientReinforceState|null>(null);
     const [selection, setSelection] = React.useState<string|null>(null);
     const [hover, setHover] = React.useState<Hover>({ territory: null, token: null });
 
@@ -388,7 +396,6 @@ function App(props: AppProps) {
         } else if (phase.attack) {
             selectionHandler = async (newSelection: string | null) => {
                 if (newSelection && selection && territs.get(selection)!.owner == props.player && territs.get(newSelection)!.owner != props.player) {
-                    console.log(`attacking from ${selection} to ${newSelection}`);
                     // This selection is an attack!
                     const request = {
                         attack: {
@@ -439,7 +446,6 @@ function App(props: AppProps) {
         } else if (phase.advance) {
             const advance = phase.advance;
             const from = territs.get(advance.from)!;
-            const to = territs.get(advance.to)!;
 
             const onFinish = async () => {
                 const request = {
@@ -475,13 +481,67 @@ function App(props: AppProps) {
             );
         } else if (phase.reinforce) {
             const onFinish = async () => {
-                const events = await sendAction(props.gameId, { end_reinforce: { player: props.player }});
+                let events;
+                if (clientReinforceState) {
+                    events = await sendAction(props.gameId, {
+                        reinforce: {
+                            player: props.player,
+                            from: selection!,
+                            to: clientReinforceState.target,
+                            troops: clientReinforceState.troops,
+                        }
+                    });
+                } else {
+                    events = await sendAction(props.gameId, { end_reinforce: { player: props.player }});
+                }
                 for (const event of events) {
                     applyEvent(event);
                 }
                 setSelection(null);
+                setClientReinforceState(null);
             };
             phasePanel = <ReinforcePanel onFinish={onFinish}/>
+            selectionHandler = (name: string | null) => {
+                if (!name) {
+                    setSelection(null);
+                    setClientReinforceState(null);
+                    return;
+                }
+                const t = territs.get(name)!
+                if (t.owner != props.player) {
+                    setSelection(null);
+                    setClientReinforceState(null);
+                    return;
+                }
+                if (!selection || clientReinforceState) {
+                    setSelection(name);
+                    setClientReinforceState(null);
+                    return;
+                }
+                if (selection != name) {
+                    setClientReinforceState({target: name, troops: 0});
+                }
+            };
+
+            if (selection) {
+                const selectedTerrit = territs.get(selection)!;
+                if (clientReinforceState) {
+                    const onReinforceChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+                        const troops = event.target.valueAsNumber;
+                        setClientReinforceState({target: clientReinforceState.target, troops: troops});
+                    };
+                    overlays.push(
+                        <TrackingView key="reinforce">
+                            <div className="dialog" data-tracking={clientReinforceState.target}>
+                                <input type="number" min="0" max={selectedTerrit.troops - 1} value={clientReinforceState.troops} onChange={onReinforceChange}></input>
+                            </div>
+                        </TrackingView>
+                    );
+                    arrows.push(
+                        <map-arrow key="reinforce" src={selection} dst={clientReinforceState.target} color="green" />
+                    );
+                }
+            }
         }
 
         const renderedTerrits = [...territs.entries()].map(([name, data]) => {
@@ -492,6 +552,12 @@ function App(props: AppProps) {
                 const deployments = clientDeployState.request.deployments[name];
                 if (deployments) {
                     additionalTroops = deployments;
+                }
+            } else if (clientReinforceState) {
+                if (clientReinforceState.target == name) {
+                    troops += clientReinforceState.troops;
+                } else if (selection == name) {
+                    troops -= clientReinforceState.troops;
                 }
             } else if (phase.advance) {
                 const advanceTroops = clientAdvanceState ? clientAdvanceState.troops : territs.get(phase.advance.from)!.troops - 1;
@@ -561,6 +627,7 @@ type ActionRequest = {
     attack?: AttackRequest,
     advance?: MoveRequest,
     end_attack?: EndPhaseRequest,
+    reinforce?: MoveRequest,
     end_reinforce?: EndPhaseRequest,
 }
 

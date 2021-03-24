@@ -498,7 +498,7 @@ func (g *GameState) applyReinforceAction(m *Map, reinforce *MoveAction) ([]*Even
 	if !found {
 		return nil, fmt.Errorf("territory '%s' does not exist", reinforce.To)
 	}
-	if to.Owner == reinforce.Player {
+	if to.Owner != reinforce.Player {
 		return nil, fmt.Errorf("territory '%s' does not belong to you", reinforce.To)
 	}
 	if reinforce.Troops >= from.Troops {

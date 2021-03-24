@@ -152,10 +152,7 @@ class MapViewElement extends MapElement {
             this._anchorPoint.x = event.offsetX;
             this._anchorPoint.y = event.offsetY;
             this._pointOfInterest = transform.transformPoint(this._anchorPoint);
-            console.log('scale=', this._mapScale);
-            console.log('poi=', this._pointOfInterest);
-            console.log('anc=', this._anchorPoint);
-
+            
             this._canvas.removeEventListener('mouseup', this._mouseUp);
             this._canvas.removeEventListener('mouseleave', this._mouseUp);    
         }
