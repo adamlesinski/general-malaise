@@ -231,6 +231,7 @@ func main() {
 	r.Handle("/", fs)
 	r.Handle("/index.css", fs)
 	r.PathPrefix("/dist/").Handler(fs)
+	r.PathPrefix("/assets/").Handler(fs)
 
 	s := r.PathPrefix("/api/v1/").Subrouter()
 	s.HandleFunc("/game/{gameId}", ctx.getGame).Methods(http.MethodGet)
