@@ -4,43 +4,10 @@ import (
 	"sync"
 )
 
-func NewTestGameAlpha(m *Map) *Game {
-	state := NewGameState("wahtever", []string{"wahtever", "hawflakes"}, "alpha")
-	state.Start(m)
-	return &Game{
-		lock:      sync.Mutex{},
-		state:     state,
-		m:         m,
-		listeners: make([]chan []byte, 0),
-	}
-}
-
-func NewTestMapAlpha() *Map {
-	m := &Map{
-		AssetPath: "/maps/alpha",
-		Territs: map[string]*Territory{
-			"Arafan": {
-				Neighbours: []string{"Moncton", "Creer"},
-				Center:     "129.60227924168927 179.98075626239478",
-				Paths:      []string{"M 142.946 125.006 C 151.216 125.006 162.218 127.625 170.609 129.722 C 172.399 130.17 176.987 130.264 179.037 131.705 C 170.524 133.589 164.364 154.999 160.982 161.765 C 159.99 163.749 158.974 169.666 160.147 172.011 C 160.865 173.446 161.707 174.602 162.625 175.573 C 165.984 180.32 170.971 181.292 174.297 184.659 C 174.545 185.028 174.775 185.421 174.987 185.845 C 175.943 187.757 175.055 191.117 174.101 194.581 C 173.034 194.118 172.113 193.73 171.42 193.437 L 172.149 193.852 C 172.149 203.024 158.438 226.539 146.136 222.907 C 138.424 220.63 132.831 211.293 125.603 207.674 C 115.168 202.45 98.589 212.526 89.238 202.202 C 87.025 199.758 82.898 197.746 80.161 195.163 C 79.943 194.808 79.745 194.431 79.557 194.04 C 79.553 193.507 79.553 192.979 79.553 192.46 C 79.553 172.634 96.121 167.4 106.808 153.151 C 114.737 142.578 117.818 133.787 129.546 127.565 Z M 179.873 132.639 C 179.964 132.831 180.029 133.033 180.073 133.244 C 179.497 133.29 178.969 133.316 178.501 133.316 L 179.598 132.213 C 179.709 132.346 179.801 132.488 179.873 132.639 Z"},
-			},
-			"Moncton": {
-				Neighbours: []string{"Arafan", "Creer"},
-				Center:     "203.21465652428944 177.92228817989195",
-				Paths:      []string{"M 198.353 132.552 C 205.619 136.185 209.841 141.946 216.354 145.201 C 226.556 150.3 233.255 143.472 239.395 155.755 C 241.435 159.837 238.583 166.591 240.615 170.656 C 244.406 178.237 238.864 185.427 237.192 192.138 C 233.9 205.349 229.915 213.648 224.516 224.438 C 222.375 228.717 217.065 232.936 211.279 235.074 C 211.253 231.672 210.845 228.38 209.314 226.847 C 205.273 222.8 198.386 224.684 194.478 220.546 C 191.616 217.515 192.68 208.88 190.633 204.864 C 188.799 201.266 179.554 196.947 174.101 194.581 C 174.101 194.581 174.101 194.581 174.101 194.581 C 175.055 191.117 175.943 187.757 174.987 185.845 C 172.025 179.919 165.366 179.826 161.245 173.871 C 160.854 173.307 160.487 172.69 160.147 172.011 C 158.974 169.666 159.99 163.749 160.982 161.765 C 161.727 160.275 162.606 158.075 163.616 155.529 C 167.191 146.516 172.399 133.174 179.037 131.705 C 179.431 131.617 179.831 131.572 180.236 131.572 L 179.598 132.213 L 178.501 133.316 C 178.969 133.316 179.497 133.29 180.073 133.244 C 185.387 132.822 194.757 130.753 198.353 132.552 Z"},
-			},
-			"Creer": {
-				Neighbours: []string{"Moncton", "Arafan"},
-				Center:     "172.3106717085933 253.6544666406856",
-				Paths:      []string{"M 210.954 243.922 C 210.954 259.16 207.151 279.906 197.431 290.392 C 194.703 293.335 186.854 289.527 184.715 287.395 C 177.693 280.391 165.455 266.059 155.338 263.074 C 149.71 261.413 138.124 254.699 134.205 250.767 C 128.998 245.542 132.973 237.281 122.128 234.074 C 106.788 229.538 77.522 226.161 69.659 209.607 C 67.54 205.147 67.41 198.556 64.965 193.655 C 62.932 189.584 60.308 183.438 61.872 178.143 C 62.888 174.704 65.682 172.369 69.811 174.329 C 72.04 175.388 72.715 183.798 74.795 185.885 C 77.21 188.306 77.611 192.621 79.859 194.869 C 79.957 194.967 80.058 195.065 80.16 195.161 C 80.16 195.162 80.161 195.162 80.161 195.163 C 82.898 197.746 87.025 199.758 89.238 202.202 C 98.589 212.526 115.168 202.45 125.603 207.674 C 132.831 211.293 138.424 220.63 146.136 222.907 C 158.438 226.539 172.149 203.024 172.149 193.852 L 171.42 193.437 C 172.151 193.747 173.138 194.162 174.282 194.66 C 179.756 197.042 188.819 201.305 190.633 204.864 C 192.68 208.88 191.616 217.515 194.478 220.546 C 198.386 224.684 205.273 222.8 209.314 226.847 C 210.845 228.38 211.253 231.672 211.279 235.074 C 211.279 235.074 211.279 235.074 211.279 235.074 C 211.306 238.456 210.954 241.946 210.954 243.922 Z"},
-			},
-		},
-	}
-	return m
-}
-
 func NewTestGameHongKong(m *Map) *Game {
-	state := NewGameState("wahtever", []string{"wahtever", "hawflakes"}, "hk")
+	state := NewGameState("hk")
+	state.AddPlayer("wahtever")
+	state.AddPlayer("hawflakes")
 	state.Start(m)
 	return &Game{
 		lock:      sync.Mutex{},
@@ -55,23 +22,42 @@ func NewTestMapHongKong() *Map {
 		AssetPath: "/maps/hk",
 		Territs: map[string]*Territory{
 			"Yuen Long": {
-				Neighbours: []string{"Tuen Mun", "Tsuen Wan", "Tai Po", "North"},
-				Center:     "487 277",
-				Color:      "#72ab76",
+				Neighbours: []*Neighbour{
+					{
+						Name: "Tuen Mun",
+						Path: "M259.4,405.1c48.9-42.3,182.1-113.1,182.1-113.1",
+					},
+					{
+						Name: "Tsuen Wan",
+						Path: "",
+					},
+					{
+						Name: "Tai Po",
+						Path: "",
+					},
+					{
+						Name: "North",
+						Path: "",
+					},
+				},
+				Center: "487 277",
+				Color:  "#72ab76",
 				Paths: []string{
 					"M569.6,97.2l-3.8,1.8l-2.8,5l-4.1,2l-1.2-0.9l-11.2,9.4h-3.9l-9.3-5.9l-8.2,0.3l-15.5,6.8l-7,7.9l-2.8,15.2l-5.5,5.9l-13.6,3.6l-13.2-4.3l-6.8-0.7l-7.2,3l-9.7,9.8l-1.1,2.3l-3.2,1.4l-1.4,3.4l-4.7,4.5l0.2,8.8l-0.9,2.2l1.4,7.5l-1.1,4.8l9.8,5.9v2.1l-6.8,0.2l2.5,17l4.6,0.3l0.2,1.8l-5.2,3.2l-3.2,4.7l-1.4-0.4l2.8-8.4l-2.5-7.9l-4.6-8.6l-2.5,2.8l-1.6-0.3l-4.5-1.4l-10.7,2.3l-6.8,6.1l-4.8,6.4l-3.4,0.5l-2.3-2.2l-9.5,5.7l-2.7-1.2h-10l-7,5.9l-5.4,10.2l-3.6,13l3.4,10.4l3.6,9.5l-1.8,1.8l-7.5-15.5l-0.4-13.2l5.9-14.8l9.5-10.7l13.8-1.4l5.5-0.5l3.4-3.6l2.9-5.9l1.2-19.5l2.5-2.3l-3.2,0.2l-5,1.6l-4.8-3.6l-8.6-2.7l-11.1-1.1l0.4,3.8l-6.1,5.3l-2.7,7.5l-2.9,10.9l-9.8,7.3l-10.4,9.1l-1.4,3.8l-8.2,10.9l5,2.8l1.6,2.2l-9.6,0.5l-4.1,12.2L302.2,265l-10.3,1.6l-6.6,3.8l-0.3,3.8l-3.8-2.7l-7.2,4.1l-5.3-1.1h-3l-3.4,9.1l-2.2,12.3l-6.2,2.5l-7.3,8.4l-1.4,1.2l0.6,8.6l-3.8,8.9l-3.1,3.6l-13.4,8.2l2.5,2.5l0.2,8.4l-1.1,0.9l-0.2,5.6l2.8-0.8l4.1-5.6l4.5-1l-0.2-4.3l5.1-2.8l1-5.8l6.8-12.9h46.2l1,6.1l35.6,1l1.8,2.2l4.3-2.2l4.8-2.3l4.3-2.8l3.8,1.2l5.1-2.2l-5.6,13.4l7.3,12.4l21.7,1l0.8,16.4l10.1,1l0.8,23.7l88.6,0.3l0.2-8.3l20.2-0.2l-0.2,8.8l-6.8,0.2l0.2,18.7l18.4,1l1,16.4l10.6-6.3l8.3-0.5l2.5-9.3l11.1,0.2l9.8-9.3l4.3-3.5l6.8,1.8l5.8,4.3l3.5-0.2l4.8-4.3l12.6-14.7l8.6-0.5l2.8,4.8l7.1-1.2l8.6-1.8l0.8-3l6.1-3.8l3.3-2.8l12.6,2.5l0.8-5.8l4.3-5l0.5-14.4l-8.1-11.9v-4l-7.8-5.8l-3.3-8.3l-0.8-6.8l-9.3-19.7l0.8-7.8l10.6-12.1l7.3-10.1l3.5-1.2l0.8-6.6l9.8-10.6l3.8-10.1l-14.9,0.2l-2.8-6.3l-5.5-0.5l-4.6-6.8l-11.9,0.8l-5.8,4.5l-8.6-2l-8.8,6.1l-9.1,2.5h-14.9l-0.5-37.9l6.6-11.3l0.5-17.2l-5-7.8l0.8-6.3l2.3-4.3l-1.8-11.1l-3-0.8l1.2-9.3l4.1-0.2l2.2-4l-3.3-3.5v-5.6l-2-3.3l3-10.6l-0.5-3l-4.1-1.8L569.6,97.2z",
 				},
 			},
 			"Kwun Tong": {
-				Neighbours: []string{"Sai Kung", "Eastern", "Kowloon City", "Wong Tai Sin"},
-				Center:     "888 608",
-				Color:      "#c23d00",
+				Neighbours: []*Neighbour{
+					{Name: "Sai Kung"}, {Name: "Eastern"}, {Name: "Kowloon City"}, {Name: "Wong Tai Sin"},
+				},
+				Center: "888 608",
+				Color:  "#c23d00",
 				Paths: []string{
 					"M834.7,565.9l0.2,22.7l-5.5,3.9l17.5,19.7l-0.9,3.6l2.6,2.1l5.3-3l20.9,21l5.8-3.8l3.3,3l-5.6,5.3l3.8,5.1l2.5,1l1.3,5.8l6.8,5.3L903,656l3.8,4.6l-8.6,5.5l8.3,10.1l2.8-2.8l4.3,3.5l-4.1,4l0.5,2l5,4l2.8,0.4l1.2-3.5l-2.8-3l2.7-4.5l0.2-12.3l6.8,2l0.2-8.2l-4.3-11.2l-6.6-6.4l-1.4-6.1l9.1-8.4l2.3-9.1l-8.2-2.5l3.6-8.4l-1.1-6.6l-4.8,3.8l-14.8-8l-5.2-12.8l-7-13.8l-32.7,3.4l-6.6-5.7l-8.2,2.5L834.7,565.9z",
 				},
 			},
 			"Yau Tsim Mong": {
-				Neighbours: []string{"Kowloon City", "Wan Chai", "Central & Western", "Sham Shui Po"},
+				Neighbours: []*Neighbour{{Name: "Kowloon City"}, {Name: "Wan Chai"}, {Name: "Central & Western"}, {Name: "Sham Shui Po"}},
 				Center:     "755 625",
 				Color:      "#fc7a1e",
 				Paths: []string{
@@ -79,7 +65,7 @@ func NewTestMapHongKong() *Map {
 				},
 			},
 			"Sham Shui Po": {
-				Neighbours: []string{"Kowloon City", "Yau Tsim Mong", "Kwai Tsing", "Sha Tin"},
+				Neighbours: []*Neighbour{{Name: "Kowloon City"}, {Name: "Yau Tsim Mong"}, {Name: "Kwai Tsing"}, {Name: "Sha Tin"}},
 				Center:     "732 561",
 				Color:      "#a93500",
 				Paths: []string{
@@ -87,7 +73,7 @@ func NewTestMapHongKong() *Map {
 				},
 			},
 			"Kowloon City": {
-				Neighbours: []string{"Wong Tai Sin", "Kwun Tong", "Eastern", "Yau Tsim Mong", "Sham Shui Po", "Sha Tin"},
+				Neighbours: []*Neighbour{{Name: "Wong Tai Sin"}, {Name: "Kwun Tong"}, {Name: "Eastern"}, {Name: "Yau Tsim Mong"}, {Name: "Sham Shui Po"}, {Name: "Sha Tin"}},
 				Center:     "794 594",
 				Color:      "#da4400",
 				Paths: []string{
@@ -95,7 +81,7 @@ func NewTestMapHongKong() *Map {
 				},
 			},
 			"Sha Tin": {
-				Neighbours: []string{"Tai Po", "Sai Kung", "Wong Tai Sin", "Kowloon City", "Sham Shui Po", "Kwai Tsing", "Tsuen Wan"},
+				Neighbours: []*Neighbour{{Name: "Tai Po"}, {Name: "Sai Kung"}, {Name: "Wong Tai Sin"}, {Name: "Kowloon City"}, {Name: "Sham Shui Po"}, {Name: "Kwai Tsing"}, {Name: "Tsuen Wan"}},
 				Center:     "842 428",
 				Color:      "#64956a",
 				Paths: []string{
@@ -103,7 +89,7 @@ func NewTestMapHongKong() *Map {
 				},
 			},
 			"Wong Tai Sin": {
-				Neighbours: []string{"Sha Tin", "Sai Kung", "Kwun Tong", "Kowloon City"},
+				Neighbours: []*Neighbour{{Name: "Sha Tin"}, {Name: "Sai Kung"}, {Name: "Kwun Tong"}, {Name: "Kowloon City"}},
 				Center:     "841 539",
 				Color:      "#912e00",
 				Paths: []string{
@@ -111,7 +97,7 @@ func NewTestMapHongKong() *Map {
 				},
 			},
 			"Eastern": {
-				Neighbours: []string{"Kwun Tong", "Southern", "Wan Chai", "Kowloon City"},
+				Neighbours: []*Neighbour{{Name: "Kwun Tong"}, {Name: "Southern"}, {Name: "Wan Chai"}, {Name: "Kowloon City"}},
 				Center:     "883 724",
 				Color:      "#015994",
 				Paths: []string{
@@ -119,7 +105,7 @@ func NewTestMapHongKong() *Map {
 				},
 			},
 			"Central & Western": {
-				Neighbours: []string{"Yau Tsim Mong", "Wan Chai", "Southern", "Lantau Island"},
+				Neighbours: []*Neighbour{{Name: "Yau Tsim Mong"}, {Name: "Wan Chai"}, {Name: "Southern"}, {Name: "Lantau Island"}},
 				Center:     "718 716",
 				Color:      "#0164a7",
 				Paths: []string{
@@ -127,7 +113,7 @@ func NewTestMapHongKong() *Map {
 				},
 			},
 			"Tuen Mun": {
-				Neighbours: []string{"Yuen Long", "Tsuen Wan", "Lantau Island"},
+				Neighbours: []*Neighbour{{Name: "Yuen Long"}, {Name: "Tsuen Wan"}, {Name: "Lantau Island"}},
 				Center:     "261 410",
 				Color:      "#81c185",
 				Paths: []string{
@@ -135,7 +121,7 @@ func NewTestMapHongKong() *Map {
 				},
 			},
 			"Lantau Island": {
-				Neighbours: []string{"Tuen Mun", "Tsuen Wan", "Central & Western", "Southern", "Lamma Island"},
+				Neighbours: []*Neighbour{{Name: "Tuen Mun"}, {Name: "Tsuen Wan"}, {Name: "Central & Western"}, {Name: "Southern"}, {Name: "Lamma Island"}},
 				Center:     "271 739",
 				Color:      "#b38b3e",
 				Paths: []string{
@@ -152,7 +138,7 @@ func NewTestMapHongKong() *Map {
 				},
 			},
 			"Lamma Island": {
-				Neighbours: []string{"Lantau Island", "Po Toi", "Southern"},
+				Neighbours: []*Neighbour{{Name: "Lantau Island"}, {Name: "Po Toi"}, {Name: "Southern"}},
 				Center:     "681 955",
 				Color:      "#e6b350",
 				Paths: []string{
@@ -160,7 +146,7 @@ func NewTestMapHongKong() *Map {
 				},
 			},
 			"Po Toi": {
-				Neighbours: []string{"Lamma Island", "Southern"},
+				Neighbours: []*Neighbour{{Name: "Lamma Island"}, {Name: "Southern"}},
 				Center:     "951 1010",
 				Color:      "#cc9f47",
 				Paths: []string{
@@ -170,7 +156,7 @@ func NewTestMapHongKong() *Map {
 				},
 			},
 			"Southern": {
-				Neighbours: []string{"Eastern", "Central & Western", "Wan Chai", "Po Toi", "Lamma Island"},
+				Neighbours: []*Neighbour{{Name: "Eastern"}, {Name: "Central & Western"}, {Name: "Wan Chai"}, {Name: "Po Toi"}, {Name: "Lamma Island"}},
 				Center:     "844 798",
 				Color:      "#1a7dc0",
 				Paths: []string{
@@ -182,7 +168,7 @@ func NewTestMapHongKong() *Map {
 				},
 			},
 			"Kwai Tsing": {
-				Neighbours: []string{"Sha Tin", "Sham Shui Po", "Tsuen Wan"},
+				Neighbours: []*Neighbour{{Name: "Sha Tin"}, {Name: "Sham Shui Po"}, {Name: "Tsuen Wan"}},
 				Center:     "680 518",
 				Color:      "#a4cfa9",
 				Paths: []string{
@@ -191,7 +177,7 @@ func NewTestMapHongKong() *Map {
 				},
 			},
 			"Sai Kung": {
-				Neighbours: []string{"Tai Po", "Kwun Tong", "Wong Tai Sin", "Sha Tin"},
+				Neighbours: []*Neighbour{{Name: "Tai Po"}, {Name: "Kwun Tong"}, {Name: "Wong Tai Sin"}, {Name: "Sha Tin"}},
 				Center:     "954 561",
 				Color:      "#58825c",
 				Paths: []string{
@@ -212,7 +198,7 @@ func NewTestMapHongKong() *Map {
 				},
 			},
 			"North": {
-				Neighbours: []string{"Yuen Long", "Tai Po"},
+				Neighbours: []*Neighbour{{Name: "Yuen Long"}, {Name: "Tai Po"}},
 				Center:     "785 94",
 				Color:      "#649668",
 				Paths: []string{
@@ -224,7 +210,7 @@ func NewTestMapHongKong() *Map {
 				},
 			},
 			"Tsuen Wan": {
-				Neighbours: []string{"Yuen Long", "Tai Po", "Sha Tin", "Kwai Tsing", "Lantau Island", "Tuen Mun"},
+				Neighbours: []*Neighbour{{Name: "Yuen Long"}, {Name: "Tai Po"}, {Name: "Sha Tin"}, {Name: "Kwai Tsing"}, {Name: "Lantau Island"}, {Name: "Tuen Mun"}},
 				Center:     "608 450",
 				Color:      "#7dba84",
 				Paths: []string{
@@ -234,7 +220,7 @@ func NewTestMapHongKong() *Map {
 				},
 			},
 			"Wan Chai": {
-				Neighbours: []string{"Yau Tsim Mong", "Eastern", "Southern", "Central & Western"},
+				Neighbours: []*Neighbour{{Name: "Yau Tsim Mong"}, {Name: "Eastern"}, {Name: "Southern"}, {Name: "Central & Western"}},
 				Center:     "789 728",
 				Color:      "#014e82",
 				Paths: []string{
@@ -242,7 +228,7 @@ func NewTestMapHongKong() *Map {
 				},
 			},
 			"Tai Po": {
-				Neighbours: []string{"North", "Sai Kung", "Sha Tin", "Tsuen Wan", "Yuen Long"},
+				Neighbours: []*Neighbour{{Name: "North"}, {Name: "Sai Kung"}, {Name: "Sha Tin"}, {Name: "Tsuen Wan"}, {Name: "Yuen Long"}},
 				Center:     "739 310",
 				Color:      "#b1e2b4",
 				Paths: []string{

@@ -1,11 +1,11 @@
 interface ControlPanelProps {
-    players: Map<string, Player>,
+    players: Player[],
     activePlayer: string,
     thisPlayer: string,
 }
 
 function ControlPanel(props: ControlPanelProps) {
-    const rows = [...props.players.values()].map(player => {
+    const rows = props.players.map(player => {
         let playerName = <span style={{color: player.color}}>{player.name}</span>
         if (props.thisPlayer == player.name) {
             playerName = <b>{playerName}</b>
@@ -49,7 +49,7 @@ interface TerritoryDetailsProps {
     name: string,
     owner: string,
     troops: number,
-    neighbours: string[],
+    neighbours: Neighbour[],
 }
 
 function TerritoryDetails(props: TerritoryDetailsProps) {
@@ -57,7 +57,7 @@ function TerritoryDetails(props: TerritoryDetailsProps) {
         <div>
             <p><b>{props.name}</b></p>
             <p>Owned by <u>{props.owner}</u> with <b>{props.troops}</b> troops</p>
-            <p>Neighbours: {props.neighbours.join(', ')}</p>
+            <p>Neighbours: {props.neighbours.map(n => n.name).join(', ')}</p>
         </div>
     );
 }

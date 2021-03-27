@@ -7,12 +7,22 @@ import (
 )
 
 type Action struct {
-	Deploy       *DeployAction   `json:"deploy,omitempty"`
-	Attack       *AttackAction   `json:"attack,omitempty"`
-	EndAttack    *EndPhaseAction `json:"end_attack,omitempty"`
-	Advance      *MoveAction     `json:"advance,omitempty"`
-	Reinforce    *MoveAction     `json:"reinforce,omitempty"`
-	EndReinforce *EndPhaseAction `json:"end_reinforce,omitempty"`
+	JoinGame     *JoinGameAction  `json:"join_game,omitempty"`
+	StartGame    *StartGameAction `json:"start_game,omitempty"`
+	Deploy       *DeployAction    `json:"deploy,omitempty"`
+	Attack       *AttackAction    `json:"attack,omitempty"`
+	EndAttack    *EndPhaseAction  `json:"end_attack,omitempty"`
+	Advance      *MoveAction      `json:"advance,omitempty"`
+	Reinforce    *MoveAction      `json:"reinforce,omitempty"`
+	EndReinforce *EndPhaseAction  `json:"end_reinforce,omitempty"`
+}
+
+type JoinGameAction struct {
+	Player string `json:"player"`
+}
+
+type StartGameAction struct {
+	Player string `json:"player"`
 }
 
 type DeployAction struct {
@@ -38,12 +48,14 @@ type MoveAction struct {
 }
 
 type Event struct {
+	PlayerJoined *Player            `json:"player_joined,omitempty"`
 	Deploy       *DeployAction      `json:"deploy,omitempty"`
 	Attack       *AttackEvent       `json:"attack,omitempty"`
 	Advance      *MoveAction        `json:"advance,omitempty"`
 	Reinforce    *MoveAction        `json:"reinforce,omitempty"`
 	PhaseChanged *PhaseChangedEvent `json:"phase_changed,omitempty"`
 	StatsChanged *StatsChangedEvent `json:"stats_changed,omitempty"`
+	Snapshot     *GameState         `json:"snapshot,omitempty"`
 }
 
 type DeployEvent struct {
@@ -76,6 +88,7 @@ type StatsUpdate struct {
 	Territories    uint64 `json:"territories"`
 	Troops         uint64 `json:"troops"`
 	Reinforcements uint64 `json:"reinforcements"`
+	Eliminated     bool   `json:"eliminated"`
 }
 
 type TerritoryMut struct {
@@ -124,35 +137,46 @@ type GameState struct {
 	Map          string                   `json:"map"`
 }
 
-func NewGameState(player string, playerNames []string, mapName string) GameState {
-	COLORS := []string{"red", "blue", "green", "yellow"}
-	var players []*Player
-	for idx := range playerNames {
-		players = append(players, &Player{
-			Name:  playerNames[idx],
-			Color: COLORS[idx],
-		})
-	}
+func NewGameState(mapName string) GameState {
 	return GameState{
-		Phase:        Phase{Lobby: &LobbyPhase{}},
-		ActivePlayer: player,
-		Players:      players,
-		Territs:      make(map[string]*TerritoryMut),
-		Map:          mapName,
+		Phase:   Phase{Lobby: &LobbyPhase{}},
+		Territs: make(map[string]*TerritoryMut),
+		Map:     mapName,
 	}
 }
 
-func (g *GameState) Start(m *Map) error {
+func (g *GameState) AddPlayer(player string) (*Event, error) {
 	if g.Phase.Lobby == nil {
-		return fmt.Errorf("game is already started")
+		return nil, fmt.Errorf("game is already started")
+	}
+
+	COLORS := []string{"red", "blue", "green", "yellow", "brown", "teal"}
+	if g.findPlayer(player) != nil {
+		return nil, fmt.Errorf("player already joined")
+	}
+	newPlayer := Player{
+		Name:  player,
+		Color: COLORS[len(g.Players)],
+	}
+	g.Players = append(g.Players, &newPlayer)
+	return &Event{
+		PlayerJoined: &newPlayer,
+	}, nil
+}
+
+func (g *GameState) Start(m *Map) (*Event, error) {
+	if g.Phase.Lobby == nil {
+		return nil, fmt.Errorf("game is already started")
 	}
 	g.initialDeploy(m)
 	g.calculateStats(m)
-	g.ActivePlayer = g.Players[0].Name
+	g.ActivePlayer = g.Players[rand.Int()%len(g.Players)].Name
 	g.Phase = Phase{Deploy: &DeployPhase{
 		Reinforcements: g.findPlayer(g.ActivePlayer).Reinforcements,
 	}}
-	return nil
+	return &Event{
+		Snapshot: g,
+	}, nil
 }
 
 func (g *GameState) findPlayer(name string) *Player {
@@ -230,6 +254,7 @@ func (g *GameState) statsUpdate() *StatsChangedEvent {
 			Territories:    player.Territories,
 			Troops:         player.Troops,
 			Reinforcements: player.Reinforcements,
+			Eliminated:     player.Eliminated,
 		}
 	}
 	return &StatsChangedEvent{
@@ -268,7 +293,24 @@ func (g *GameState) ApplyAction(m *Map, action *Action) ([]*Event, error) {
 		}
 		return g.applyReinforceAction(m, action.Reinforce)
 	} else if g.Phase.Lobby != nil {
-		return nil, fmt.Errorf("game has not been started")
+		if action.JoinGame != nil {
+			event, err := g.AddPlayer(action.JoinGame.Player)
+			if err != nil {
+				return nil, err
+			}
+			return []*Event{event}, nil
+		} else if action.StartGame != nil {
+			if g.Players[0].Name != action.StartGame.Player {
+				return nil, fmt.Errorf("only admin can start the game")
+			}
+			event, err := g.Start(m)
+			if err != nil {
+				return nil, err
+			}
+			return []*Event{event}, nil
+		} else {
+			return nil, fmt.Errorf("game has not started")
+		}
 	} else {
 		panic("invalid game phase")
 	}

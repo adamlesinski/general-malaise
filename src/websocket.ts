@@ -13,7 +13,7 @@ function Websocket(props: WebsocketProps) {
             const message = JSON.parse(event.data) as GameEvent;
             props.applyEvent(message);
         };
-        return () => ws.close();  
+        return () => { console.log('closing'); ws.close(); };  
     }, [props.gameId]);
     return null;
 }

@@ -279,6 +279,13 @@ class MapViewElement extends MapElement {
                 ctx.stroke(path.path);
             }
         }
+
+        // Draw any territory connecting paths.
+        ctx.lineWidth = 5 / this._mapScale;
+        for (const connector of this.querySelectorAll<MapConnectorElement>('map-connector')) {
+            ctx.strokeStyle = connector.color;
+            ctx.stroke(connector.path);
+        }
         ctx.restore();
         
         // Draw the tokens.
@@ -507,8 +514,29 @@ class MapArrowElement extends MapElement {
     }
 }
 
+class MapConnectorElement extends MapElement {
+    static get observedAttributes(): string[] {
+        return ['path', 'color'];
+    }
+
+    private _path: Path2D = new Path2D();
+    private _color: string = '#000000';
+
+    get path(): Path2D { return this._path; }
+    get color(): string { return this._color; }
+
+    attributeChangedCallback(name: string, _oldValue: string, newValue: string) {
+        switch (name) {
+            case 'path': this._path = new Path2D(newValue); break;
+            case 'color': this._color = newValue; break;
+        }
+        this.invalidateMap();
+    }
+}
+
 customElements.define('map-view', MapViewElement);
 customElements.define('map-territory', MapTerritoryElement);
 customElements.define('map-path', MapPathElement);
 customElements.define('map-troops', MapTroopsElement);
 customElements.define('map-arrow', MapArrowElement);
+customElements.define('map-connector', MapConnectorElement);

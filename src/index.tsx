@@ -4,7 +4,7 @@ interface TerritoryData {
 };
 
 interface TerritoryImmutableProps {
-    neighbours: string[],
+    neighbours: Neighbour[],
     center: string,
     paths: string[],
     color: string,
@@ -16,6 +16,11 @@ type Region = {
     bonus: number,
 }
 
+type Neighbour = {
+    name: string,
+    path: string,
+}
+
 interface Player {
     name: string,
     color: string,
@@ -24,6 +29,8 @@ interface Player {
     troops: number,
     territories: number,
 }
+
+type LobbyPhase = {};
 
 type DeployPhase = {
     reinforcements: number,
@@ -39,6 +46,7 @@ type AdvancePhase = {
 type ReinforcePhase = {}
 
 type Phase = {
+    lobby?: LobbyPhase,
     deploy?: DeployPhase,
     attack?: AttackPhase,
     advance?: AdvancePhase,
@@ -140,19 +148,22 @@ interface Hover {
 type GameState = {
     phase: Phase,
 	active_player: string,
-    players: Map<string, Player>,
+    players: Player[],
+    playerMap: Map<string, Player>,
 	territs: Map<string, TerritoryData>,
     territsImmut: Map<string, TerritoryImmutableProps>,
     regions: Map<string, Region>,
 }
 
 type GameEvent = {
+    player_joined?: Player,
     deploy?: DeployEvent,
     attack?: AttackEvent,
     advance?: MoveEvent,
     reinforce?: MoveEvent,
     phase_changed?: PhaseChangedEvent,
     stats_changed?: StatsChangedEvent,
+    snapshot?: GameState,
 }
 
 type DeployEvent = DeployRequest;
@@ -185,6 +196,7 @@ type StatsUpdate = {
     territories: number,
     troops: number,
     reinforcements: number,
+    eliminated: boolean,
 }
 
 async function fetchGameState(gameId: string): Promise<GameState> {
@@ -212,15 +224,15 @@ async function fetchGameState(gameId: string): Promise<GameState> {
         regions.set(name, region);
     }
     
-    const players = new Map();
+    const playerMap = new Map();
     for (const player of json.players) {
-        players.set(player.name, player);
+        playerMap.set(player.name, player);
     }
     const territs = new Map();
     for (const [name, territ] of Object.entries(json.territs)) {
         territs.set(name, territ);
     }
-    return {...json, players: players, territs: territs, territsImmut: territsImmut, regions: regions};
+    return {...json, playerMap: playerMap, territs: territs, territsImmut: territsImmut, regions: regions};
 }
 
 function advanceGameState(current: GameState, event: GameEvent): GameState {
@@ -260,14 +272,36 @@ function advanceGameState(current: GameState, event: GameEvent): GameState {
     } else if (event.phase_changed) {
         return {...current, active_player: event.phase_changed.new_player, phase: event.phase_changed.new_phase };
     } else if (event.stats_changed) {
-        const players = new Map();
-        for (const [name, update] of Object.entries(event.stats_changed.updates)) {
-            players.set(name, {
-                ...current.players.get(name)!,
-                ...update
-            });
+        const newPlayers: Player[] = [...current.players];
+        for (const idx in newPlayers) {
+            const name = newPlayers[idx].name;
+            const update = event.stats_changed.updates[name];
+            if (update) {
+                newPlayers[idx] = {...newPlayers[idx], ...update }
+            }
         }
-        return {...current, players: players};
+        const newPlayerMap = new Map();
+        for (const player of newPlayers) {
+            newPlayerMap.set(player.name, player);
+        }
+        return {...current, players: newPlayers, playerMap: newPlayerMap};
+    } else if (event.player_joined) {
+        const newPlayers: Player[] = [...current.players];
+        newPlayers.push(event.player_joined);
+
+        const newPlayerMap = new Map(current.playerMap);
+        newPlayerMap.set(event.player_joined.name, event.player_joined);
+        return {...current, players: newPlayers, playerMap: newPlayerMap};
+    } else if (event.snapshot) {
+        const playerMap = new Map();
+        for (const player of event.snapshot.players) {
+            playerMap.set(player.name, player);
+        }
+        const territs = new Map();
+        for (const [name, territ] of Object.entries(event.snapshot.territs)) {
+            territs.set(name, territ);
+        }
+        return {...event.snapshot, playerMap: playerMap, territs: territs, territsImmut: current.territsImmut, regions: current.regions};
     } else {
         throw new Error('unrecognized event');
     }
@@ -283,7 +317,7 @@ function useGameState(gameId: string): [GameState | null, boolean, string | null
     React.useEffect(() => {
         fetchGameState(gameId)
             .then(gameState => setState({ error: null, loading: false, state: gameState }))
-            .catch(err => setState(prev => { return { ...prev, error: err, loading: false }; }));
+            .catch(err => setState(prev => { return { ...prev, error: `${err}`, loading: false }; }));
     }, [gameId]);
     const apply = (event: GameEvent) => {
         setState(prev => {
@@ -346,14 +380,30 @@ function App(props: AppProps) {
         {
             const hoveredTerrit = hover.territory || hover.token;
             if (hoveredTerrit) {
-                const territData = territs.get(hoveredTerrit)!
+                const territData = territs.get(hoveredTerrit);
+                const owner = territData ? territData.owner : '';
+                const troops = territData ? territData.troops : 0;
                 const territProps = territsImmut.get(hoveredTerrit)!;
                 controlPanels.push(<div key="spacer" className="expand" />);
-                controlPanels.push(<TerritoryDetails key="territ-details" name={hoveredTerrit} owner={territData.owner} troops={territData.troops} neighbours={territProps.neighbours} />);
+                controlPanels.push(<TerritoryDetails key="territ-details" name={hoveredTerrit} owner={owner} troops={troops} neighbours={territProps.neighbours} />);
             }
         }
 
-        if (gameState.active_player !== props.player) {
+        if (phase.lobby) {
+            let startGameHandler: (() => void) | undefined = undefined;
+            let joinGameHandler: (() => void) | undefined = undefined;
+            if (props.player == gameState.players[0].name) {
+                startGameHandler = async () => {
+                    await sendAction(props.gameId, { start_game: { player: props.player} });
+                };
+            } else if (!gameState.playerMap.has(props.player)) {
+                joinGameHandler = async () => {
+                    await sendAction(props.gameId, { join_game: { player: props.player} });
+                };
+            }
+            phasePanel = <LobbyPanel onStartGame={startGameHandler} onJoinGame={joinGameHandler} />
+            nonRenderingComponents.push(<Websocket key="websocket" gameId={props.gameId} applyEvent={applyEvent} />);
+        } else if (gameState.active_player !== props.player) {
             phasePanel = <WaitingPanel />;
             nonRenderingComponents.push(<Websocket key="websocket" gameId={props.gameId} applyEvent={applyEvent} />);
         } else if (phase.deploy) {
@@ -423,13 +473,13 @@ function App(props: AppProps) {
 
             if (hover && hover.token) {
                 const name = hover.token;
-                highlights = territsImmut.get(name)!.neighbours.filter(n => territs.get(n)!.owner != territs.get(name)!.owner);
+                highlights = territsImmut.get(name)!.neighbours.filter(n => territs.get(n.name)!.owner != territs.get(name)!.owner).map(n => n.name);
             }
 
             if (selection) {
                 const src = territs.get(selection)!;
                 if (src.owner == props.player && src.troops > 1) {
-                    const arrowTargets = territsImmut.get(selection)!.neighbours.filter(n => territs.get(n)!.owner != src.owner);
+                    const arrowTargets = territsImmut.get(selection)!.neighbours.filter(n => territs.get(n.name)!.owner != src.owner).map(n => n.name);
                     for (const target of arrowTargets) {
                         let color = "#f7756baa";
                         if (hover.token) {
@@ -540,42 +590,60 @@ function App(props: AppProps) {
                     arrows.push(
                         <map-arrow key="reinforce" src={selection} dst={clientReinforceState.target} color="green" />
                     );
+                    const p = territsImmut.get(selection)!;
+                    const n = p.neighbours.find(n => n.name == clientReinforceState.target)!;
+                    if (n.path != '') {
+                        arrows.push(
+                            <map-connector key="connector" path={n.path} color="green" />
+                        );
+                    }
+
                 }
             }
         }
 
-        const renderedTerrits = [...territs.entries()].map(([name, data]) => {
-            const immut = territsImmut.get(name)!;
-            let troops = data.troops;
-            let additionalTroops = 0;
-            if (clientDeployState) {
-                const deployments = clientDeployState.request.deployments[name];
-                if (deployments) {
-                    additionalTroops = deployments;
+        const renderedTerrits = [...territsImmut.entries()].map(([name, immut]) => {
+            const data = territs.get(name);
+            let isTerritHovered = hover.territory == name;
+            let troopsEl: React.ReactElement | null = null;
+            if (data) {
+                let troops = data.troops;
+                let additionalTroops = 0;
+                if (clientDeployState) {
+                    const deployments = clientDeployState.request.deployments[name];
+                    if (deployments) {
+                        additionalTroops = deployments;
+                    }
+                } else if (clientReinforceState) {
+                    if (clientReinforceState.target == name) {
+                        troops += clientReinforceState.troops;
+                    } else if (selection == name) {
+                        troops -= clientReinforceState.troops;
+                    }
+                } else if (phase.advance) {
+                    const advanceTroops = clientAdvanceState ? clientAdvanceState.troops : territs.get(phase.advance.from)!.troops - 1;
+                    if (phase.advance.from == name) {
+                        troops -= advanceTroops;
+                    } else if (phase.advance.to == name) {
+                        troops += advanceTroops;
+                    }
                 }
-            } else if (clientReinforceState) {
-                if (clientReinforceState.target == name) {
-                    troops += clientReinforceState.troops;
-                } else if (selection == name) {
-                    troops -= clientReinforceState.troops;
+                const isHighlighted = highlights.includes(name);
+                let isTokenSelected = selection == name && data.owner == props.player && data.troops > 1;
+                let isTokenHovered = false;
+                if (hover.token) {
+                    isTokenHovered = hover.token == name;
+                    isTerritHovered = isTokenHovered;
                 }
-            } else if (phase.advance) {
-                const advanceTroops = clientAdvanceState ? clientAdvanceState.troops : territs.get(phase.advance.from)!.troops - 1;
-                if (phase.advance.from == name) {
-                    troops -= advanceTroops;
-                } else if (phase.advance.to == name) {
-                    troops += advanceTroops;
-                }
-            }
-            const isHighlighted = highlights.includes(name);
-            let isTokenSelected = selection == name && data.owner == props.player && data.troops > 1;
-            let isTokenHovered = false;
-            let isTerritHovered = false;
-            if (hover.token) {
-                isTokenHovered = hover.token == name;
-                isTerritHovered = isTokenHovered;
-            } else if (hover.territory) {
-                isTerritHovered = hover.territory == name;
+                troopsEl = (
+                    <map-troops
+                        amount={troops}
+                        additional={additionalTroops}
+                        color={gameState.playerMap.get(data.owner)!.color}
+                        selected={isTokenSelected}
+                        hovered={isTokenHovered}
+                        highlighted={isHighlighted} />
+                );
             }
             const mapPaths = immut.paths.map((p, i) => <map-path key={`${name}:${i}`} path={p} />);
             return (
@@ -587,13 +655,7 @@ function App(props: AppProps) {
                     color={immut.color}
                     hovered={isTerritHovered}>
                     {mapPaths}
-                    <map-troops
-                        amount={troops}
-                        additional={additionalTroops}
-                        color={gameState.players.get(data.owner)!.color}
-                        selected={isTokenSelected}
-                        hovered={isTokenHovered}
-                        highlighted={isHighlighted} />
+                    {troopsEl}
                 </map-territory>
             );
         });
@@ -623,12 +685,22 @@ function App(props: AppProps) {
 }
 
 type ActionRequest = {
+    join_game?: JoinGameRequest,
+    start_game?: StartGameRequest,
     deploy?: DeployRequest,
     attack?: AttackRequest,
     advance?: MoveRequest,
     end_attack?: EndPhaseRequest,
     reinforce?: MoveRequest,
     end_reinforce?: EndPhaseRequest,
+}
+
+type JoinGameRequest = {
+    player: string,
+}
+
+type StartGameRequest = {
+    player: string,
 }
 
 type DeployRequest = {
@@ -682,8 +754,5 @@ function ErrorView() {
 }
 
 window.onload = function () {
-    const params = window.location.search ? window.location.search : '?user=wahtever';
-    const user = params.replace('?user=', '');
-    console.log(`playing as ${user}`);
-    ReactDOM.render(<App player={user} gameId="1" />, document.getElementById('app'));
+    ReactDOM.render(<App player={__PLAYER_ID} gameId={__GAME_ID} />, document.getElementById('app'));
 };   

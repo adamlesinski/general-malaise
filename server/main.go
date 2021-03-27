@@ -1,11 +1,15 @@
 package main
 
 import (
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
+	"net/url"
 	"sync"
+	"text/template"
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
@@ -81,6 +85,121 @@ func NewContext() Context {
 		games: make(map[string]*Game),
 		maps:  make(map[string]*Map),
 	}
+}
+
+func getUser(w http.ResponseWriter, r *http.Request) (string, bool) {
+	cookie, err := r.Cookie("user")
+	if err != nil || cookie.Value == "" {
+		http.Redirect(w, r, fmt.Sprintf("/login?continue=%s", url.QueryEscape(r.URL.Path)), http.StatusFound)
+		return "", false
+	}
+	return cookie.Value, true
+}
+
+//go:embed game.html
+var gameTmplStr string
+var gameTmpl = template.Must(template.New("game").Parse(gameTmplStr))
+
+func staticGamePage(w http.ResponseWriter, r *http.Request) {
+	user, found := getUser(w, r)
+	if !found {
+		return
+	}
+
+	type PageData struct {
+		GameId   string
+		PlayerId string
+	}
+
+	gameTmpl.Execute(w,
+		&PageData{
+			GameId:   mux.Vars(r)["gameId"],
+			PlayerId: user,
+		},
+	)
+}
+
+//go:embed index.html
+var indexTmplStr string
+var indexTmpl = template.Must(template.New("index").Parse(indexTmplStr))
+
+func getCreate(w http.ResponseWriter, r *http.Request) {
+	_, found := getUser(w, r)
+	if !found {
+		return
+	}
+	indexTmpl.Execute(w, nil)
+}
+
+//go:embed login.html
+var loginTmplStr string
+var loginTmpl = template.Must(template.New("login").Parse(loginTmplStr))
+
+func getLogin(w http.ResponseWriter, r *http.Request) {
+	type PageData struct {
+		Redirect string
+	}
+	loginTmpl.Execute(w,
+		&PageData{
+			Redirect: r.URL.Query().Get("continue"),
+		},
+	)
+}
+
+func postLogin(w http.ResponseWriter, r *http.Request) {
+	username := r.FormValue("username")
+	if username == "" {
+		w.Write([]byte(`Error`))
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:  "user",
+		Value: username,
+	})
+	redirect := r.URL.Query().Get("continue")
+	if redirect != "" {
+		http.Redirect(w, r, redirect, http.StatusFound)
+	} else {
+		http.Redirect(w, r, "/", http.StatusFound)
+	}
+}
+
+const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ123456789"
+
+func RandStringBytes(n int) string {
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = letterBytes[rand.Intn(len(letterBytes))]
+	}
+	return string(b)
+}
+
+func (ctx *Context) createGame(w http.ResponseWriter, r *http.Request) {
+	user, found := getUser(w, r)
+	if !found {
+		return
+	}
+
+	ctx.lock.Lock()
+	defer ctx.lock.Unlock()
+	var newGameId string
+	for {
+		newGameId = RandStringBytes(5)
+		if _, collision := ctx.games[newGameId]; !collision {
+			break
+		}
+	}
+
+	state := NewGameState("hk")
+	state.AddPlayer(user)
+	ctx.games[newGameId] = &Game{
+		lock:      sync.Mutex{},
+		state:     state,
+		m:         ctx.maps["hk"],
+		listeners: make([]chan []byte, 0),
+	}
+
+	http.Redirect(w, r, fmt.Sprintf("/game/%s", newGameId), http.StatusFound)
 }
 
 func (ctx *Context) getGame(w http.ResponseWriter, r *http.Request) {
@@ -221,17 +340,22 @@ func (ctx *Context) getMap(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	ctx := NewContext()
-	ctx.maps["alpha"] = NewTestMapAlpha()
 	ctx.maps["hk"] = NewTestMapHongKong()
 	ctx.games["1"] = NewTestGameHongKong(ctx.maps["hk"])
 
-	fs := http.FileServer(http.Dir("/Users/adamlesinski/workspace/map/"))
+	staticFs := http.FileServer(http.Dir("/Users/adamlesinski/workspace/map/static"))
+	buildFs := http.FileServer(http.Dir("/Users/adamlesinski/workspace/map/dist"))
 
 	r := mux.NewRouter()
-	r.Handle("/", fs)
-	r.Handle("/index.css", fs)
-	r.PathPrefix("/dist/").Handler(fs)
-	r.PathPrefix("/assets/").Handler(fs)
+	r.Handle("/index.css", staticFs)
+	r.PathPrefix("/assets/").Handler(staticFs)
+	r.PathPrefix("/dist/").Handler(http.StripPrefix("/dist", buildFs))
+
+	r.HandleFunc("/", getCreate).Methods(http.MethodGet)
+	r.HandleFunc("/create", ctx.createGame).Methods(http.MethodPost)
+	r.HandleFunc("/login", getLogin).Methods(http.MethodGet)
+	r.HandleFunc("/login", postLogin).Methods(http.MethodPost)
+	r.HandleFunc("/game/{gameId}", staticGamePage).Methods(http.MethodGet)
 
 	s := r.PathPrefix("/api/v1/").Subrouter()
 	s.HandleFunc("/game/{gameId}", ctx.getGame).Methods(http.MethodGet)

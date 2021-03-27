@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Map</title>
+    <link rel="stylesheet" type="text/css" href="/index.css">
+</head>
+<body>
+    <div id="app" class="frame"></div>
+    <script crossorigin src="https://unpkg.com/react@17/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
+    <script src="/dist/util.js" type="text/javascript"></script>
+    <script src="/dist/map.js" type="text/javascript"></script>
+    <script src="/dist/control.js" type="text/javascript"></script>
+    <script src="/dist/deploy.js" type="text/javascript"></script>
+    <script src="/dist/websocket.js" type="text/javascript"></script>
+    <script type="text/javascript">
+        var __GAME_ID = '{{.GameId}}';
+        var __PLAYER_ID = '{{.PlayerId}}';
+    </script>
+    <script src="/dist/index.js" type="text/javascript"></script>
+</body>
+</html>

@@ -1,3 +1,25 @@
+interface LobbyPanelProps {
+    onStartGame?: () => void,
+    onJoinGame?: () => void,
+}
+
+function LobbyPanel(props: LobbyPanelProps) {
+    let button = null;
+    if (props.onStartGame) {
+        button = <button onClick={props.onStartGame}>Start Game</button>;
+    } else if (props.onJoinGame) {
+        button = <button onClick={props.onJoinGame}>Join Game</button>;
+    }
+    return (
+        <div className="phase-panel" style={{ backgroundColor: 'grey' }}>
+            <h1>LOBBY</h1>
+            <div style={{ flexGrow: 1, display: 'flex', justifyContent: 'flex-end'}}>
+                {button}
+            </div>
+        </div>
+    );
+}
+
 interface DeployPanelProps {
     reinforcementsRemaining: number,
     reinforcementsTotal: number,

@@ -10,5 +10,9 @@ declare namespace JSX {
         ['map-path']: any,
         ['map-troops']: any, 
         ['map-arrow']: any,
+        ['map-connector']: any,
     }
 }
+
+declare var __GAME_ID: string;
+declare var __PLAYER_ID: string;

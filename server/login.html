@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Login</title>
+</head>
+<body>
+    <h1>General Malaise</h1>
+    <h2>Hello, my name is</h2>
+    <form action="/login?continue={{.Redirect}}" method="POST">
+        <input name="username" type="text" />
+        <button type="submit">Let's Play</button>
+    </form>
+</body>
+</html>

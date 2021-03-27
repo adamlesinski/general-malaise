@@ -7,10 +7,10 @@ type Map struct {
 }
 
 type Territory struct {
-	Neighbours []string `json:"neighbours"`
-	Center     string   `json:"center"`
-	Paths      []string `json:"paths"`
-	Color      string   `json:"color"`
+	Neighbours []*Neighbour `json:"neighbours"`
+	Center     string       `json:"center"`
+	Paths      []string     `json:"paths"`
+	Color      string       `json:"color"`
 }
 
 type Region struct {
@@ -19,13 +19,18 @@ type Region struct {
 	Bonus   uint64   `json:"bonus"`
 }
 
+type Neighbour struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
 func (m *Map) IsAdjacent(from string, to string) bool {
 	territ, found := m.Territs[from]
 	if !found {
 		return false
 	}
 	for idx := range territ.Neighbours {
-		if territ.Neighbours[idx] == to {
+		if territ.Neighbours[idx].Name == to {
 			return true
 		}
 	}
