@@ -45,12 +45,17 @@ type AdvancePhase = {
 
 type ReinforcePhase = {}
 
+type GameOverPhase = {
+    winner: string,
+}
+
 type Phase = {
     lobby?: LobbyPhase,
     deploy?: DeployPhase,
     attack?: AttackPhase,
     advance?: AdvancePhase,
     reinforce?: ReinforcePhase,
+    game_over?: GameOverPhase,
 }
 
 interface MapViewProps {
@@ -404,7 +409,11 @@ function App(props: AppProps) {
             phasePanel = <LobbyPanel onStartGame={startGameHandler} onJoinGame={joinGameHandler} />
             nonRenderingComponents.push(<Websocket key="websocket" gameId={props.gameId} applyEvent={applyEvent} />);
         } else if (gameState.active_player !== props.player) {
-            phasePanel = <WaitingPanel />;
+            if (gameState.playerMap.get(props.player)!.eliminated) {
+                phasePanel = <EliminatedPanel />
+            } else {
+                phasePanel = <WaitingPanel />;
+            }
             nonRenderingComponents.push(<Websocket key="websocket" gameId={props.gameId} applyEvent={applyEvent} />);
         } else if (phase.deploy) {
             const localDeployState = clientDeployState ?? { reinforcementsUsed: 0, request: { player: props.player, deployments: {} }};
@@ -599,6 +608,8 @@ function App(props: AppProps) {
                     // }
                 }
             }
+        } else if (phase.game_over) {
+            phasePanel = <VictoryPanel />;
         }
 
         const renderedTerrits = [...territsImmut.entries()].map(([name, immut]) => {

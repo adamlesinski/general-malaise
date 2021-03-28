@@ -45,7 +45,7 @@ interface AttackPanelProps {
 function AttackPanel(props: AttackPanelProps) {
     return (
         <div className="phase-panel" style={{ backgroundColor: 'red' }}>
-            <h1>ATTACK</h1>
+            <h1 className="dark">ATTACK</h1>
             <div style={{ flexGrow: 1, display: 'flex', justifyContent: 'flex-end' }}>
                 <button onClick={props.onFinish}>End attack</button>
             </div>
@@ -60,7 +60,7 @@ interface AdvancePanelProps {
 function AdvancePanel(props: AdvancePanelProps) {
     return (
         <div className="phase-panel" style={{ backgroundColor: 'orange' }}>
-            <h1>ADVANCE</h1>
+            <h1 className="dark">ADVANCE</h1>
             <div style={{ flexGrow: 1, display: 'flex', justifyContent: 'flex-end' }}>
                 <button onClick={props.onFinish}>Advance</button>
             </div>
@@ -91,6 +91,22 @@ function WaitingPanel() {
     );
 }
 
+function EliminatedPanel() {
+    return (
+        <div className="phase-panel" style={{ backgroundColor: 'black' }}>
+            <h1>ELIMINATED</h1>
+        </div>
+    );
+}
+
+function VictoryPanel() {
+    return (
+        <div className="phase-panel" style={{ backgroundColor: 'purple' }}>
+            <h1>VICTORY</h1>
+        </div>
+    );
+}
+
 function LoadingGamePanel() {
     return (
         <div className="phase-panel" style={{ backgroundColor: 'grey' }}>
@@ -105,8 +121,8 @@ interface ErrorGamePanelProps {
 
 function ErrorGamePanel(props: ErrorGamePanelProps) {
     return (
-        <div style={{ backgroundColor: 'grey', display: 'flex', width: '100%', height: '100%', alignItems: 'center' }}>
-            <h1 style={{ padding: '8px', margin: 0, fontSize: '16pt', color: 'white' }}>ERROR</h1>
+        <div style={{ backgroundColor: 'grey' }}>
+            <h1>ERROR</h1>
             <p>{props.message}</p>
         </div>
     );

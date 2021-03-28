@@ -111,6 +111,7 @@ type Phase struct {
 	Attack    *AttackPhase    `json:"attack,omitempty"`
 	Advance   *AdvancePhase   `json:"advance,omitempty"`
 	Reinforce *ReinforcePhase `json:"reinforce,omitempty"`
+	GameOver  *GameOverPhase  `json:"game_over,omitempty"`
 }
 
 type LobbyPhase struct {
@@ -128,6 +129,10 @@ type AdvancePhase struct {
 }
 
 type ReinforcePhase struct{}
+
+type GameOverPhase struct {
+	Winner string `json:"winner"`
+}
 
 type GameState struct {
 	Phase        Phase                    `json:"phase"`
@@ -207,7 +212,7 @@ func (g *GameState) initialDeploy(m *Map) {
 	}
 }
 
-func (g *GameState) calculateStats(m *Map) {
+func (g *GameState) calculateStats(m *Map) bool {
 	playerTerritCount := make(map[string]struct {
 		territs uint64
 		troops  uint64
@@ -218,6 +223,7 @@ func (g *GameState) calculateStats(m *Map) {
 		counter.troops += territ.Troops
 		playerTerritCount[territ.Owner] = counter
 	}
+	eliminated := 0
 	for idx := range g.Players {
 		player := g.Players[idx]
 		counter := playerTerritCount[g.Players[idx].Name]
@@ -227,6 +233,10 @@ func (g *GameState) calculateStats(m *Map) {
 		if player.Reinforcements < 3 {
 			player.Reinforcements = 3
 		}
+		if player.Territories == 0 {
+			player.Eliminated = true
+			eliminated += 1
+		}
 
 		// Calculate region bonuses
 		for _, region := range m.Regions {
@@ -235,6 +245,8 @@ func (g *GameState) calculateStats(m *Map) {
 			}
 		}
 	}
+	// Game over condition
+	return eliminated == len(g.Players)-1
 }
 
 func (g *GameState) playerOwnsRegion(player string, region *Region) bool {
@@ -446,11 +458,16 @@ func (g *GameState) applyAttackAction(m *Map, attack *AttackAction) ([]*Event, e
 		from.Troops -= 1
 		to.Troops = 1
 
-		// Adjust all stats.
-		g.calculateStats(m)
-
 		oldPhase := g.Phase
-		g.Phase = Phase{Advance: &AdvancePhase{From: attack.From, To: attack.To}}
+
+		// Adjust all stats.
+		if g.calculateStats(m) {
+			// The game is over!
+			g.Phase = Phase{GameOver: &GameOverPhase{Winner: attack.Player}}
+		} else {
+			// Move to the advance phase.
+			g.Phase = Phase{Advance: &AdvancePhase{From: attack.From, To: attack.To}}
+		}
 		events = append(events, &Event{PhaseChanged: &PhaseChangedEvent{
 			OldPlayer: attack.Player,
 			NewPlayer: attack.Player,
