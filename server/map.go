@@ -37,7 +37,32 @@ func (m *Map) IsAdjacent(from string, to string) bool {
 	return false
 }
 
-func (m *Map) IsConnected(from string, to string) bool {
-	// TODO: Graph algo
-	return true
+type Owner interface {
+	Owns(owner string, territ string) bool
+}
+
+func (m *Map) IsConnected(from string, to string, owner string, ownerChecker Owner) bool {
+	visited := make(map[string]bool)
+	nodes := []string{from}
+	for len(nodes) > 0 {
+		territName := nodes[len(nodes)-1]
+		nodes = nodes[:len(nodes)-1]
+		if territ, found := m.Territs[territName]; found {
+			visited[territName] = true
+			if ownerChecker.Owns(owner, territName) {
+				if territName == to {
+					return true
+				}
+				for idx := range territ.Neighbours {
+					neighbour := territ.Neighbours[idx].Name
+					if !visited[neighbour] {
+						nodes = append(nodes, neighbour)
+					}
+				}
+			}
+		} else {
+			return false
+		}
+	}
+	return false
 }

@@ -590,14 +590,13 @@ function App(props: AppProps) {
                     arrows.push(
                         <map-arrow key="reinforce" src={selection} dst={clientReinforceState.target} color="green" />
                     );
-                    const p = territsImmut.get(selection)!;
-                    const n = p.neighbours.find(n => n.name == clientReinforceState.target)!;
-                    if (n.path != '') {
-                        arrows.push(
-                            <map-connector key="connector" path={n.path} color="green" />
-                        );
-                    }
-
+                    // const p = territsImmut.get(selection)!;
+                    // const n = p.neighbours.find(n => n.name == clientReinforceState.target)!;
+                    // if (n.path != '') {
+                    //     arrows.push(
+                    //         <map-connector key="connector" path={n.path} color="green" />
+                    //     );
+                    // }
                 }
             }
         }

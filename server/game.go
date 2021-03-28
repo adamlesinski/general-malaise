@@ -546,7 +546,7 @@ func (g *GameState) applyReinforceAction(m *Map, reinforce *MoveAction) ([]*Even
 	if reinforce.Troops >= from.Troops {
 		return nil, fmt.Errorf("territory '%s' does not have enough troops to reinforce", reinforce.From)
 	}
-	if !m.IsConnected(reinforce.From, reinforce.To) {
+	if !m.IsConnected(reinforce.From, reinforce.To, reinforce.Player, g) {
 		return nil, fmt.Errorf("territory '%s' is not reinforceable from '%s'", reinforce.To, reinforce.From)
 	}
 	to.Troops += reinforce.Troops
@@ -589,4 +589,11 @@ func (g *GameState) applyEndReinforceAction(endReinforce *EndPhaseAction) ([]*Ev
 			},
 		},
 	}, nil
+}
+
+func (g *GameState) Owns(owner string, territ string) bool {
+	if t, found := g.Territs[territ]; found {
+		return t.Owner == owner
+	}
+	return false
 }
