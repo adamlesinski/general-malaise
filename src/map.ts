@@ -263,6 +263,7 @@ class MapViewElement extends MapElement {
         const territoryTransform = this._territoryTransform();
         ctx.setTransform(ctx.getTransform().multiplySelf(territoryTransform));
         ctx.strokeStyle = 'black';
+        ctx.lineWidth = 1 / this._mapScale;
         for (const territory of this.querySelectorAll<MapTerritoryElement>('map-territory')) {
             ctx.fillStyle = territory.color;
             for (const path of territory.querySelectorAll<MapPathElement>('map-path')) {
@@ -274,7 +275,8 @@ class MapViewElement extends MapElement {
         // Draw hovered territory.
         const hoveredTerrit = this.querySelector<MapPathElement>('map-territory[hovered=true]');
         if (hoveredTerrit) {
-            ctx.strokeStyle = 'green';
+            ctx.strokeStyle = 'black';
+            ctx.lineWidth = 2 / this._mapScale;
             for (const path of hoveredTerrit.querySelectorAll<MapPathElement>('map-path')) {
                 ctx.stroke(path.path);
             }
