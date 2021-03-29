@@ -28,15 +28,27 @@ interface Player {
     reinforcements: number,
     troops: number,
     territories: number,
+    spoils: Spoil[],
+}
+
+type Spoil = {
+    name: string,
+    color: string,
 }
 
 type LobbyPhase = {};
+
+type SpoilsPhase = {
+    mandatory: boolean,
+};
 
 type DeployPhase = {
     reinforcements: number,
 };
 
-type AttackPhase = {};
+type AttackPhase = {
+    conquered: boolean,
+};
 
 type AdvancePhase = {
     from: string,
@@ -51,6 +63,7 @@ type GameOverPhase = {
 
 type Phase = {
     lobby?: LobbyPhase,
+    spoils?: SpoilsPhase,
     deploy?: DeployPhase,
     attack?: AttackPhase,
     advance?: AdvancePhase,
@@ -379,7 +392,7 @@ function App(props: AppProps) {
         let selectionHandler: ((name: string | null) => void) | undefined = undefined;
 
         controlPanels.push(
-            <ControlPanel key="player-stats" players={gameState.players} activePlayer={gameState.active_player} thisPlayer={props.player} />
+            <ControlPanel key="player-stats" players={gameState.players} activePlayer={gameState.active_player} thisPlayer={props.player} territs={territs} />
         );
 
         {
@@ -415,6 +428,14 @@ function App(props: AppProps) {
                 phasePanel = <WaitingPanel />;
             }
             nonRenderingComponents.push(<Websocket key="websocket" gameId={props.gameId} applyEvent={applyEvent} />);
+        } else if (phase.spoils) {
+            const playSpoils = async (spoils: string[]) => {
+                const events = await sendAction(props.gameId, { spoils: { player: props.player, spoils: spoils }});
+                for (const event of events) {
+                    applyEvent(event);
+                }
+            };
+            phasePanel = <SpoilsPanel thisPlayer={props.player} spoils={gameState.playerMap.get(props.player)!.spoils} territs={territs} onPlaySpoils={playSpoils} />;
         } else if (phase.deploy) {
             const localDeployState = clientDeployState ?? { reinforcementsUsed: 0, request: { player: props.player, deployments: {} }};
             const reinforcementsRemaining = phase.deploy.reinforcements - localDeployState.reinforcementsUsed;
@@ -559,7 +580,7 @@ function App(props: AppProps) {
                 setSelection(null);
                 setClientReinforceState(null);
             };
-            phasePanel = <ReinforcePanel onFinish={onFinish}/>
+            phasePanel = <ReinforcePanel onFinish={onFinish} skip={clientReinforceState === null}/>
             selectionHandler = (name: string | null) => {
                 if (!name) {
                     setSelection(null);
@@ -697,6 +718,7 @@ function App(props: AppProps) {
 type ActionRequest = {
     join_game?: JoinGameRequest,
     start_game?: StartGameRequest,
+    spoils?: PlaySpoilsRequest,
     deploy?: DeployRequest,
     attack?: AttackRequest,
     advance?: MoveRequest,
@@ -711,6 +733,11 @@ type JoinGameRequest = {
 
 type StartGameRequest = {
     player: string,
+}
+
+type PlaySpoilsRequest = {
+    player: string,
+    spoils: string[],
 }
 
 type DeployRequest = {

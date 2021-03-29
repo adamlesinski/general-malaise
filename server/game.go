@@ -9,6 +9,7 @@ import (
 type Action struct {
 	JoinGame     *JoinGameAction  `json:"join_game,omitempty"`
 	StartGame    *StartGameAction `json:"start_game,omitempty"`
+	Spoils       *SpoilsAction    `json:"spoils,omitempty"`
 	Deploy       *DeployAction    `json:"deploy,omitempty"`
 	Attack       *AttackAction    `json:"attack,omitempty"`
 	EndAttack    *EndPhaseAction  `json:"end_attack,omitempty"`
@@ -23,6 +24,11 @@ type JoinGameAction struct {
 
 type StartGameAction struct {
 	Player string `json:"player"`
+}
+
+type SpoilsAction struct {
+	Player string   `json:"player"`
+	Spoils []string `json:"spoils"`
 }
 
 type DeployAction struct {
@@ -58,9 +64,14 @@ type Event struct {
 	Snapshot     *GameState         `json:"snapshot,omitempty"`
 }
 
-type DeployEvent struct {
-	Player      string            `json:"player"`
-	Deployments map[string]uint64 `json:"deployments"`
+func (e Event) RedactForPlayer(playerName string) *Event {
+	redactedEvent := Event(e)
+	if e.Snapshot != nil {
+		redactedEvent.Snapshot = e.Snapshot.RedactForPlayer(playerName)
+	} else if e.StatsChanged != nil {
+		redactedEvent.StatsChanged = e.StatsChanged.RedactForPlayer(playerName)
+	}
+	return &redactedEvent
 }
 
 type AttackEvent struct {
@@ -84,11 +95,34 @@ type StatsChangedEvent struct {
 	Updates map[string]*StatsUpdate `json:"updates"`
 }
 
+func (e StatsChangedEvent) RedactForPlayer(playerName string) *StatsChangedEvent {
+	redactedSpoil := &Spoil{
+		Name:  "???",
+		Color: "???",
+	}
+	redactedEvent := StatsChangedEvent(e)
+	redactedEvent.Updates = make(map[string]*StatsUpdate)
+	for key, value := range e.Updates {
+		if key == playerName {
+			redactedEvent.Updates[key] = value
+		} else {
+			redacted := StatsUpdate(*value)
+			redacted.Spoils = []*Spoil{}
+			for range value.Spoils {
+				redacted.Spoils = append(redacted.Spoils, redactedSpoil)
+			}
+			redactedEvent.Updates[key] = &redacted
+		}
+	}
+	return &redactedEvent
+}
+
 type StatsUpdate struct {
-	Territories    uint64 `json:"territories"`
-	Troops         uint64 `json:"troops"`
-	Reinforcements uint64 `json:"reinforcements"`
-	Eliminated     bool   `json:"eliminated"`
+	Territories    uint64   `json:"territories"`
+	Troops         uint64   `json:"troops"`
+	Reinforcements uint64   `json:"reinforcements"`
+	Eliminated     bool     `json:"eliminated"`
+	Spoils         []*Spoil `json:"spoils"`
 }
 
 type TerritoryMut struct {
@@ -96,17 +130,41 @@ type TerritoryMut struct {
 	Troops uint64 `json:"troops"`
 }
 
+type Spoil struct {
+	Name  string `json:"name"`
+	Color string `json:"color"`
+}
+
 type Player struct {
-	Name           string `json:"name"`
-	Color          string `json:"color"`
-	Eliminated     bool   `json:"eliminated"`
-	Reinforcements uint64 `json:"reinforcements"`
-	Troops         uint64 `json:"troops"`
-	Territories    uint64 `json:"territories"`
+	Name           string   `json:"name"`
+	Color          string   `json:"color"`
+	Eliminated     bool     `json:"eliminated"`
+	Reinforcements uint64   `json:"reinforcements"`
+	Troops         uint64   `json:"troops"`
+	Territories    uint64   `json:"territories"`
+	Spoils         []*Spoil `json:"spoils"`
+}
+
+func (p *Player) HasSpoils() bool {
+	red := 0
+	green := 0
+	blue := 0
+	for idx := range p.Spoils {
+		switch p.Spoils[idx].Color {
+		case "red":
+			red += 1
+		case "green":
+			green += 1
+		case "blue":
+			blue += 1
+		}
+	}
+	return red >= 3 || green >= 3 || blue >= 3 || (red > 0 && green > 0 && blue > 0)
 }
 
 type Phase struct {
 	Lobby     *LobbyPhase     `json:"lobby,omitempty"`
+	Spoils    *SpoilsPhase    `json:"spoils,omitempty"`
 	Deploy    *DeployPhase    `json:"deploy,omitempty"`
 	Attack    *AttackPhase    `json:"attack,omitempty"`
 	Advance   *AdvancePhase   `json:"advance,omitempty"`
@@ -114,14 +172,19 @@ type Phase struct {
 	GameOver  *GameOverPhase  `json:"game_over,omitempty"`
 }
 
-type LobbyPhase struct {
+type LobbyPhase struct{}
+
+type SpoilsPhase struct {
+	Mandatory bool `json:"mandatory"`
 }
 
 type DeployPhase struct {
 	Reinforcements uint64 `json:"reinforcements"`
 }
 
-type AttackPhase struct{}
+type AttackPhase struct {
+	Conquered bool `json:"conquered"`
+}
 
 type AdvancePhase struct {
 	From string `json:"from"`
@@ -140,6 +203,30 @@ type GameState struct {
 	Players      []*Player                `json:"players"`
 	Territs      map[string]*TerritoryMut `json:"territs"`
 	Map          string                   `json:"map"`
+	spoilPool    []*Spoil
+}
+
+func (g GameState) RedactForPlayer(playerName string) *GameState {
+	redactedSpoil := &Spoil{
+		Name:  "???",
+		Color: "???",
+	}
+	var redactedPlayers []*Player
+	for idx := range g.Players {
+		player := g.Players[idx]
+		if player.Name == playerName {
+			redactedPlayers = append(redactedPlayers, player)
+		} else {
+			redacted := Player(*player)
+			redacted.Spoils = []*Spoil{}
+			for range player.Spoils {
+				redacted.Spoils = append(redacted.Spoils, redactedSpoil)
+			}
+			redactedPlayers = append(redactedPlayers, &redacted)
+		}
+	}
+	g.Players = redactedPlayers
+	return &g
 }
 
 func NewGameState(mapName string) GameState {
@@ -160,8 +247,9 @@ func (g *GameState) AddPlayer(player string) (*Event, error) {
 		return nil, fmt.Errorf("player already joined")
 	}
 	newPlayer := Player{
-		Name:  player,
-		Color: COLORS[len(g.Players)],
+		Name:   player,
+		Color:  COLORS[len(g.Players)],
+		Spoils: []*Spoil{},
 	}
 	g.Players = append(g.Players, &newPlayer)
 	return &Event{
@@ -173,6 +261,15 @@ func (g *GameState) Start(m *Map) (*Event, error) {
 	if g.Phase.Lobby == nil {
 		return nil, fmt.Errorf("game is already started")
 	}
+
+	SPOIL_COLORS := []string{"red", "blue", "green"}
+	for territ, _ := range m.Territs {
+		g.spoilPool = append(g.spoilPool, &Spoil{
+			Name:  territ,
+			Color: SPOIL_COLORS[len(g.spoilPool)%len(SPOIL_COLORS)],
+		})
+	}
+
 	g.initialDeploy(m)
 	g.calculateStats(m)
 	g.ActivePlayer = g.Players[rand.Int()%len(g.Players)].Name
@@ -182,6 +279,18 @@ func (g *GameState) Start(m *Map) (*Event, error) {
 	return &Event{
 		Snapshot: g,
 	}, nil
+}
+
+func (g *GameState) takeSpoil() *Spoil {
+	idx := rand.Intn(len(g.spoilPool))
+	spoil := g.spoilPool[idx]
+	g.spoilPool[idx] = g.spoilPool[len(g.spoilPool)-1]
+	g.spoilPool = g.spoilPool[:len(g.spoilPool)-1]
+	return spoil
+}
+
+func (g *GameState) replaceSpoil(spoil *Spoil) {
+	g.spoilPool = append(g.spoilPool, spoil)
 }
 
 func (g *GameState) findPlayer(name string) *Player {
@@ -267,6 +376,7 @@ func (g *GameState) statsUpdate() *StatsChangedEvent {
 			Troops:         player.Troops,
 			Reinforcements: player.Reinforcements,
 			Eliminated:     player.Eliminated,
+			Spoils:         player.Spoils,
 		}
 	}
 	return &StatsChangedEvent{
@@ -282,6 +392,19 @@ func (g *GameState) selectNextPlayer() {
 				nextIdx = (nextIdx + 1) % len(g.Players)
 				if !g.Players[nextIdx].Eliminated {
 					g.ActivePlayer = g.Players[nextIdx].Name
+					// Check if we need to go to Spoils phase or
+					// deploy.
+					if g.Players[nextIdx].HasSpoils() {
+						g.Phase = Phase{
+							Spoils: &SpoilsPhase{Mandatory: len(g.Players[nextIdx].Spoils) >= 5},
+						}
+					} else {
+						g.Phase = Phase{
+							Deploy: &DeployPhase{
+								Reinforcements: g.Players[nextIdx].Reinforcements,
+							},
+						}
+					}
 					return
 				}
 			}
@@ -290,7 +413,9 @@ func (g *GameState) selectNextPlayer() {
 }
 
 func (g *GameState) ApplyAction(m *Map, action *Action) ([]*Event, error) {
-	if g.Phase.Deploy != nil {
+	if g.Phase.Spoils != nil {
+		return g.applySpoilsAction(action.Spoils)
+	} else if g.Phase.Deploy != nil {
 		return g.applyDeployAction(action.Deploy)
 	} else if g.Phase.Attack != nil {
 		if action.EndAttack != nil {
@@ -326,6 +451,113 @@ func (g *GameState) ApplyAction(m *Map, action *Action) ([]*Event, error) {
 	} else {
 		panic("invalid game phase")
 	}
+}
+
+func (g *GameState) applySpoilsAction(spoils *SpoilsAction) ([]*Event, error) {
+	if spoils == nil {
+		return nil, fmt.Errorf("action does not apply to 'spoils' phase")
+	}
+	if g.ActivePlayer != spoils.Player {
+		return nil, fmt.Errorf("it is not your turn")
+	}
+	player := g.findPlayer(spoils.Player)
+	if len(spoils.Spoils) == 0 && !g.Phase.Spoils.Mandatory {
+		// Skipping spoils.
+		oldPhase := g.Phase
+		g.Phase = Phase{Deploy: &DeployPhase{Reinforcements: player.Reinforcements}}
+		return []*Event{
+			{
+				PhaseChanged: &PhaseChangedEvent{
+					OldPlayer: g.ActivePlayer,
+					NewPlayer: g.ActivePlayer,
+					OldPhase:  oldPhase,
+					NewPhase:  g.Phase,
+				},
+			},
+		}, nil
+	}
+
+	if len(spoils.Spoils) != 3 {
+		return nil, fmt.Errorf("must play 3 spoils")
+	}
+
+	red := 0
+	green := 0
+	blue := 0
+	keep := []*Spoil{}
+	cash := []*Spoil{}
+	for i := range player.Spoils {
+		spoil := player.Spoils[i]
+		found := false
+		for j := range spoils.Spoils {
+			if spoil.Name == spoils.Spoils[j] {
+				found = true
+				cash = append(cash, spoil)
+				switch spoil.Color {
+				case "red":
+					red += 1
+				case "green":
+					green += 1
+				case "blue":
+					blue += 1
+				}
+				break
+			}
+		}
+		if !found {
+			keep = append(keep, spoil)
+		}
+	}
+
+	var bonus uint64
+	if red == 3 {
+		bonus = 4
+	} else if green == 3 {
+		bonus = 6
+	} else if blue == 3 {
+		bonus = 8
+	} else if red == 1 && green == 1 && blue == 1 {
+		bonus = 10
+	} else {
+		return nil, fmt.Errorf("invalid spoils")
+	}
+
+	deployments := make(map[string]uint64)
+	player.Spoils = keep
+	for _, spoil := range cash {
+		territ := g.Territs[spoil.Name]
+		if territ.Owner == spoils.Player {
+			territ.Troops += 2
+			deployments[spoil.Name] = 2
+		}
+		g.replaceSpoil(spoil)
+	}
+
+	oldPhase := g.Phase
+	g.Phase = Phase{Deploy: &DeployPhase{Reinforcements: player.Reinforcements + bonus}}
+	events := []*Event{
+		{
+			PhaseChanged: &PhaseChangedEvent{
+				OldPlayer: g.ActivePlayer,
+				NewPlayer: g.ActivePlayer,
+				OldPhase:  oldPhase,
+				NewPhase:  g.Phase,
+			},
+		},
+		{
+			StatsChanged: g.statsUpdate(),
+		},
+	}
+
+	if len(deployments) > 0 {
+		events = append(events, &Event{
+			Deploy: &DeployAction{
+				Player:      spoils.Player,
+				Deployments: deployments,
+			},
+		})
+	}
+	return events, nil
 }
 
 func (g *GameState) applyDeployAction(deploy *DeployAction) ([]*Event, error) {
@@ -486,18 +718,23 @@ func (g *GameState) applyEndAttackAction(endAttack *EndPhaseAction) ([]*Event, e
 	if g.ActivePlayer != endAttack.Player {
 		return nil, fmt.Errorf("it is not your turn")
 	}
+	var events []*Event
+	if g.Phase.Attack.Conquered {
+		player := g.findPlayer(g.ActivePlayer)
+		player.Spoils = append(player.Spoils, g.takeSpoil())
+		events = append(events, &Event{StatsChanged: g.statsUpdate()})
+	}
 	oldPhase := g.Phase
 	g.Phase = Phase{Reinforce: &ReinforcePhase{}}
-	return []*Event{
-		{
-			PhaseChanged: &PhaseChangedEvent{
-				OldPlayer: endAttack.Player,
-				NewPlayer: endAttack.Player,
-				OldPhase:  oldPhase,
-				NewPhase:  g.Phase,
-			},
+	events = append(events, &Event{
+		PhaseChanged: &PhaseChangedEvent{
+			OldPlayer: endAttack.Player,
+			NewPlayer: endAttack.Player,
+			OldPhase:  oldPhase,
+			NewPhase:  g.Phase,
 		},
-	}, nil
+	})
+	return events, nil
 }
 
 func (g *GameState) applyAdvanceAction(advance *MoveAction) ([]*Event, error) {
@@ -527,7 +764,7 @@ func (g *GameState) applyAdvanceAction(advance *MoveAction) ([]*Event, error) {
 	to.Troops += advance.Troops
 	from.Troops -= advance.Troops
 	oldPhase := g.Phase
-	g.Phase = Phase{Attack: &AttackPhase{}}
+	g.Phase = Phase{Attack: &AttackPhase{Conquered: true}}
 	return []*Event{
 		{Advance: advance},
 		{PhaseChanged: &PhaseChangedEvent{
@@ -568,11 +805,8 @@ func (g *GameState) applyReinforceAction(m *Map, reinforce *MoveAction) ([]*Even
 	}
 	to.Troops += reinforce.Troops
 	from.Troops -= reinforce.Troops
-	g.selectNextPlayer()
 	oldPhase := g.Phase
-	g.Phase = Phase{Deploy: &DeployPhase{
-		Reinforcements: g.findPlayer(g.ActivePlayer).Reinforcements,
-	}}
+	g.selectNextPlayer()
 	return []*Event{
 		{Reinforce: reinforce},
 		{PhaseChanged: &PhaseChangedEvent{
@@ -591,11 +825,8 @@ func (g *GameState) applyEndReinforceAction(endReinforce *EndPhaseAction) ([]*Ev
 	if g.ActivePlayer != endReinforce.Player {
 		return nil, fmt.Errorf("it is not your turn")
 	}
-	g.selectNextPlayer()
 	oldPhase := g.Phase
-	g.Phase = Phase{Deploy: &DeployPhase{
-		Reinforcements: g.findPlayer(g.ActivePlayer).Reinforcements,
-	}}
+	g.selectNextPlayer()
 	return []*Event{
 		{
 			PhaseChanged: &PhaseChangedEvent{

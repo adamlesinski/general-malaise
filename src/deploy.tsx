@@ -20,6 +20,62 @@ function LobbyPanel(props: LobbyPanelProps) {
     );
 }
 
+interface SpoilsPanelProps {
+    thisPlayer: string,
+    spoils: Spoil[],
+    territs: Map<string, TerritoryData>,
+    onPlaySpoils: (spoils: string[]) => void,
+}
+
+function SpoilsPanel(props: SpoilsPanelProps) {
+    const [selections, setSelections] = React.useState<Set<string>>(() => new Set());
+    const changeHandler = (event: React.ChangeEvent<HTMLInputElement>) => {
+        setSelections(prev => {
+            const updated = new Set(prev);
+            if (event.target.checked) {
+                updated.add(event.target.name);
+            } else {
+                updated.delete(event.target.name);
+            }
+            return updated;
+        });
+    };
+    const spoils = props.spoils.map(spoil => {
+        let label: React.ReactElement | string = spoil.name;
+        if (props.territs.get(spoil.name)?.owner == props.thisPlayer) {
+            label = <b>{label}</b>
+        }
+        return (
+            <div key={spoil.name}>
+                <input type="checkbox" name={spoil.name} onChange={changeHandler}/>
+                <label htmlFor={spoil.name}><span style={{color: spoil.color}}>{label}</span></label>
+            </div>
+        );
+    });
+    let red = 0;
+    let green = 0;
+    let blue = 0;
+    for (const selection of selections.values()) {
+        const spoil = props.spoils.find(s => s.name == selection)!;
+        switch (spoil.color) {
+            case 'red': red += 1; break;
+            case 'green': green += 1; break;
+            case 'blue': blue += 1; break;
+        }
+    }
+    const enabled = red == 3 || green == 3 || blue == 3 || (red == 1 && green == 1 && blue == 1);
+    return (
+        <div className="phase-panel" style={{ backgroundColor: 'blue' }}>
+            <h1>PLAY SPOILS</h1>
+            <div style={{ flexGrow: 1, display: 'flex', backgroundColor: 'white' }}>
+                {spoils}
+            </div>
+            <button disabled={!enabled} onClick={() => props.onPlaySpoils([...selections.values()])}>Play Spoils</button>
+            <button onClick={() => props.onPlaySpoils([])}>Skip</button>
+        </div>
+    );
+}
+
 interface DeployPanelProps {
     reinforcementsRemaining: number,
     reinforcementsTotal: number,
@@ -69,6 +125,7 @@ function AdvancePanel(props: AdvancePanelProps) {
 }
 
 interface ReinforcePanelProps {
+    skip: boolean,
     onFinish: () => void,
 }
 
@@ -77,7 +134,7 @@ function ReinforcePanel(props: ReinforcePanelProps) {
         <div className="phase-panel" style={{ backgroundColor: 'green' }}>
             <h1>REINFORCE</h1>
             <div style={{ flexGrow: 1, display: 'flex', justifyContent: 'flex-end' }}>
-                <button onClick={props.onFinish}>Reinforce</button>
+                <button onClick={props.onFinish}>{props.skip ? 'Skip' : 'Reinforce'}</button>
             </div>
         </div>
     );

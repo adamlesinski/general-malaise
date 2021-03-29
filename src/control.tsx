@@ -2,6 +2,7 @@ interface ControlPanelProps {
     players: Player[],
     activePlayer: string,
     thisPlayer: string,
+    territs: Map<string, TerritoryData>,
 }
 
 function ControlPanel(props: ControlPanelProps) {
@@ -20,28 +21,39 @@ function ControlPanel(props: ControlPanelProps) {
         return (
             <tr key={player.name}>
                 <td>{playerName}</td>
-                <td>?</td>
+                <td>{player.spoils.length}</td>
                 <td>{player.territories}</td>
                 <td>{player.troops}</td>
                 <td>{player.reinforcements}</td>
             </tr>
         );
     });
+    const spoils = props.players.find(p => p.name == props.thisPlayer)?.spoils.map(spoil => {
+        let label: React.ReactElement | string = `[${spoil.name}]`;
+        if (props.territs.get(spoil.name)!.owner == props.thisPlayer) {
+            label = <b>{label}</b>
+        }
+        return <span key={spoil.name} style={{color: spoil.color}}>{label}</span>;
+    });
     return (
-        <table>
-            <thead>
-                <tr>
-                    <th>Player</th>
-                    <th>Spoils</th>
-                    <th>Territs</th>
-                    <th>Troops</th>
-                    <th>Reinforcements</th>
-                </tr>
-            </thead>
-            <tbody>
-                {rows}
-            </tbody>
-        </table>
+        <React.Fragment>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Player</th>
+                        <th>Spoils</th>
+                        <th>Territs</th>
+                        <th>Troops</th>
+                        <th>Reinforcements</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows}
+                </tbody>
+            </table>
+            <h3>Spoils</h3>
+            <p>{spoils}</p>
+        </React.Fragment>
     );
 }
 

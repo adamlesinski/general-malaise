@@ -10,10 +10,9 @@ func NewTestGameHongKong(m *Map) *Game {
 	state.AddPlayer("hawflakes")
 	state.Start(m)
 	return &Game{
-		lock:      sync.Mutex{},
-		state:     state,
-		m:         m,
-		listeners: make([]chan []byte, 0),
+		lock:  sync.Mutex{},
+		state: state,
+		m:     m,
 	}
 }
 

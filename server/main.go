@@ -19,20 +19,25 @@ type Game struct {
 	lock      sync.Mutex
 	state     GameState
 	m         *Map
-	listeners []chan []byte
+	listeners []*Listener
 }
 
-func (game *Game) addListener(listener chan []byte) {
+type Listener struct {
+	player  string
+	channel chan []byte
+}
+
+func (game *Game) addListener(player string, listener chan []byte) {
 	game.lock.Lock()
 	defer game.lock.Unlock()
-	game.listeners = append(game.listeners, listener)
+	game.listeners = append(game.listeners, &Listener{player, listener})
 }
 
 func (game *Game) removeListener(listener chan []byte) {
 	game.lock.Lock()
 	defer game.lock.Unlock()
 	for idx := range game.listeners {
-		if game.listeners[idx] == listener {
+		if game.listeners[idx].channel == listener {
 			game.listeners[idx] = game.listeners[len(game.listeners)-1]
 			game.listeners = game.listeners[:len(game.listeners)-1]
 			break
@@ -41,17 +46,13 @@ func (game *Game) removeListener(listener chan []byte) {
 }
 
 func (game *Game) notifyListenersLocked(events []*Event) error {
-	var event_bytes [][]byte
-	for _, event := range events {
-		data, err := json.Marshal(event)
-		if err != nil {
-			return err
-		}
-		event_bytes = append(event_bytes, data)
-	}
 	for idx := range game.listeners {
-		for eventIdx := range event_bytes {
-			game.listeners[idx] <- event_bytes[eventIdx]
+		for _, event := range events {
+			data, err := json.Marshal(event.RedactForPlayer(game.listeners[idx].player))
+			if err != nil {
+				return err
+			}
+			game.listeners[idx].channel <- data
 		}
 	}
 	return nil
@@ -193,16 +194,20 @@ func (ctx *Context) createGame(w http.ResponseWriter, r *http.Request) {
 	state := NewGameState("hk")
 	state.AddPlayer(user)
 	ctx.games[newGameId] = &Game{
-		lock:      sync.Mutex{},
-		state:     state,
-		m:         ctx.maps["hk"],
-		listeners: make([]chan []byte, 0),
+		lock:  sync.Mutex{},
+		state: state,
+		m:     ctx.maps["hk"],
 	}
 
 	http.Redirect(w, r, fmt.Sprintf("/game/%s", newGameId), http.StatusFound)
 }
 
 func (ctx *Context) getGame(w http.ResponseWriter, r *http.Request) {
+	user, found := getUser(w, r)
+	if !found {
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	gameId := mux.Vars(r)["gameId"]
 	game, found := ctx.findGame(gameId)
@@ -213,7 +218,7 @@ func (ctx *Context) getGame(w http.ResponseWriter, r *http.Request) {
 	}
 	game.lock.Lock()
 	defer game.lock.Unlock()
-	data, err := json.Marshal(game.state)
+	data, err := json.Marshal(game.state.RedactForPlayer(user))
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(`{ "error": "bad game state" }`))
@@ -224,6 +229,10 @@ func (ctx *Context) getGame(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ctx *Context) postGame(w http.ResponseWriter, r *http.Request) {
+	user, found := getUser(w, r)
+	if !found {
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	gameId := mux.Vars(r)["gameId"]
 	game, found := ctx.findGame(gameId)
@@ -253,7 +262,11 @@ func (ctx *Context) postGame(w http.ResponseWriter, r *http.Request) {
 	if err := game.notifyListenersLocked(events); err != nil {
 		log.Print("failed to notify listeners:", err)
 	}
-	data, err := json.Marshal(events)
+	var redactedEvents []*Event
+	for _, event := range events {
+		redactedEvents = append(redactedEvents, event.RedactForPlayer(user))
+	}
+	data, err := json.Marshal(redactedEvents)
 	if err != nil {
 		log.Print("failed to encode result:", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -264,6 +277,10 @@ func (ctx *Context) postGame(w http.ResponseWriter, r *http.Request) {
 }
 
 func (ctx *Context) watchGame(w http.ResponseWriter, r *http.Request) {
+	user, found := getUser(w, r)
+	if !found {
+		return
+	}
 	gameId := mux.Vars(r)["gameId"]
 	game, found := ctx.findGame(gameId)
 	if !found {
@@ -280,7 +297,7 @@ func (ctx *Context) watchGame(w http.ResponseWriter, r *http.Request) {
 	defer c.Close()
 	log.Printf("new watcher: game=%s", gameId)
 	channel := make(chan []byte)
-	game.addListener(channel)
+	game.addListener(user, channel)
 	defer game.removeListener(channel)
 
 	closeChan := make(chan error)
