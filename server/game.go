@@ -191,7 +191,9 @@ type AdvancePhase struct {
 	To   string `json:"to"`
 }
 
-type ReinforcePhase struct{}
+type ReinforcePhase struct {
+	Conquered bool `json:"conquered"`
+}
 
 type GameOverPhase struct {
 	Winner string `json:"winner"`
@@ -718,23 +720,18 @@ func (g *GameState) applyEndAttackAction(endAttack *EndPhaseAction) ([]*Event, e
 	if g.ActivePlayer != endAttack.Player {
 		return nil, fmt.Errorf("it is not your turn")
 	}
-	var events []*Event
-	if g.Phase.Attack.Conquered {
-		player := g.findPlayer(g.ActivePlayer)
-		player.Spoils = append(player.Spoils, g.takeSpoil())
-		events = append(events, &Event{StatsChanged: g.statsUpdate()})
-	}
 	oldPhase := g.Phase
-	g.Phase = Phase{Reinforce: &ReinforcePhase{}}
-	events = append(events, &Event{
-		PhaseChanged: &PhaseChangedEvent{
-			OldPlayer: endAttack.Player,
-			NewPlayer: endAttack.Player,
-			OldPhase:  oldPhase,
-			NewPhase:  g.Phase,
+	g.Phase = Phase{Reinforce: &ReinforcePhase{Conquered: g.Phase.Attack.Conquered}}
+	return []*Event{
+		{
+			PhaseChanged: &PhaseChangedEvent{
+				OldPlayer: endAttack.Player,
+				NewPlayer: endAttack.Player,
+				OldPhase:  oldPhase,
+				NewPhase:  g.Phase,
+			},
 		},
-	})
-	return events, nil
+	}, nil
 }
 
 func (g *GameState) applyAdvanceAction(advance *MoveAction) ([]*Event, error) {
@@ -805,17 +802,25 @@ func (g *GameState) applyReinforceAction(m *Map, reinforce *MoveAction) ([]*Even
 	}
 	to.Troops += reinforce.Troops
 	from.Troops -= reinforce.Troops
+
+	var events []*Event
+	if g.Phase.Reinforce.Conquered {
+		player := g.findPlayer(g.ActivePlayer)
+		player.Spoils = append(player.Spoils, g.takeSpoil())
+		events = append(events, &Event{StatsChanged: g.statsUpdate()})
+	}
+
 	oldPhase := g.Phase
 	g.selectNextPlayer()
-	return []*Event{
-		{Reinforce: reinforce},
-		{PhaseChanged: &PhaseChangedEvent{
+	events = append(events, &Event{Reinforce: reinforce},
+		&Event{PhaseChanged: &PhaseChangedEvent{
 			OldPlayer: reinforce.Player,
 			NewPlayer: g.ActivePlayer,
 			OldPhase:  oldPhase,
 			NewPhase:  g.Phase,
-		}},
-	}, nil
+		},
+		})
+	return events, nil
 }
 
 func (g *GameState) applyEndReinforceAction(endReinforce *EndPhaseAction) ([]*Event, error) {
@@ -825,18 +830,23 @@ func (g *GameState) applyEndReinforceAction(endReinforce *EndPhaseAction) ([]*Ev
 	if g.ActivePlayer != endReinforce.Player {
 		return nil, fmt.Errorf("it is not your turn")
 	}
+	var events []*Event
+	if g.Phase.Reinforce.Conquered {
+		player := g.findPlayer(g.ActivePlayer)
+		player.Spoils = append(player.Spoils, g.takeSpoil())
+		events = append(events, &Event{StatsChanged: g.statsUpdate()})
+	}
 	oldPhase := g.Phase
 	g.selectNextPlayer()
-	return []*Event{
-		{
-			PhaseChanged: &PhaseChangedEvent{
-				OldPlayer: endReinforce.Player,
-				NewPlayer: g.ActivePlayer,
-				OldPhase:  oldPhase,
-				NewPhase:  g.Phase,
-			},
+	events = append(events,
+		&Event{PhaseChanged: &PhaseChangedEvent{
+			OldPlayer: endReinforce.Player,
+			NewPlayer: g.ActivePlayer,
+			OldPhase:  oldPhase,
+			NewPhase:  g.Phase,
 		},
-	}, nil
+		})
+	return events, nil
 }
 
 func (g *GameState) Owns(owner string, territ string) bool {
