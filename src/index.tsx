@@ -435,7 +435,7 @@ function App(props: AppProps) {
                     applyEvent(event);
                 }
             };
-            phasePanel = <SpoilsPanel thisPlayer={props.player} spoils={gameState.playerMap.get(props.player)!.spoils} territs={territs} onPlaySpoils={playSpoils} />;
+            phasePanel = <SpoilsPanel thisPlayer={props.player} spoils={gameState.playerMap.get(props.player)!.spoils} mandatory={phase.spoils.mandatory} territs={territs} onPlaySpoils={playSpoils} />;
         } else if (phase.deploy) {
             const localDeployState = clientDeployState ?? { reinforcementsUsed: 0, request: { player: props.player, deployments: {} }};
             const reinforcementsRemaining = phase.deploy.reinforcements - localDeployState.reinforcementsUsed;

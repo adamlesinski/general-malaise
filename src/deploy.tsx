@@ -23,6 +23,7 @@ function LobbyPanel(props: LobbyPanelProps) {
 interface SpoilsPanelProps {
     thisPlayer: string,
     spoils: Spoil[],
+    mandatory: boolean,
     territs: Map<string, TerritoryData>,
     onPlaySpoils: (spoils: string[]) => void,
 }
@@ -71,7 +72,7 @@ function SpoilsPanel(props: SpoilsPanelProps) {
                 {spoils}
             </div>
             <button disabled={!enabled} onClick={() => props.onPlaySpoils([...selections.values()])}>Play Spoils</button>
-            <button onClick={() => props.onPlaySpoils([])}>Skip</button>
+            <button disabled={props.mandatory} onClick={() => props.onPlaySpoils([])}>Skip</button>
         </div>
     );
 }
