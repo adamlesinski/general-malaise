@@ -362,11 +362,13 @@ func main() {
 
 	staticFs := http.FileServer(http.Dir("/Users/adamlesinski/workspace/map/static"))
 	buildFs := http.FileServer(http.Dir("/Users/adamlesinski/workspace/map/dist"))
+	srcFs := http.FileServer(http.Dir("/Users/adamlesinski/workspace/map/src"))
 
 	r := mux.NewRouter()
 	r.Handle("/index.css", staticFs)
 	r.PathPrefix("/assets/").Handler(staticFs)
 	r.PathPrefix("/dist/").Handler(http.StripPrefix("/dist", buildFs))
+	r.PathPrefix("/src/").Handler(http.StripPrefix("/src", srcFs))
 
 	r.HandleFunc("/", getCreate).Methods(http.MethodGet)
 	r.HandleFunc("/create", ctx.createGame).Methods(http.MethodPost)

@@ -651,7 +651,7 @@ function App(props: AppProps) {
                     } else if (selection == name) {
                         troops -= clientReinforceState.troops;
                     }
-                } else if (phase.advance) {
+                } else if (phase.advance && props.player == gameState.active_player) {
                     const advanceTroops = clientAdvanceState ? clientAdvanceState.troops : territs.get(phase.advance.from)!.troops - 1;
                     if (phase.advance.from == name) {
                         troops -= advanceTroops;
