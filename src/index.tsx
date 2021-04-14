@@ -348,6 +348,45 @@ function useGameState(gameId: string): [GameState | null, boolean, string | null
     return [state.state, state.loading, state.error, apply];
 }
 
+function useWindowVisibility(): 'visible'|'hidden' {
+    const [visibility, setVisibility] = React.useState<'visible'|'hidden'>(document.hidden ? 'hidden' : 'visible');
+    React.useEffect(() => {
+        const handler = () => setVisibility(document.hidden ? 'hidden' : 'visible');
+        const forceVisible = () => setVisibility('visible');
+        const forceHidden = () => setVisibility('hidden');
+        document.addEventListener('visibilitychange', handler, false);
+        window.addEventListener('focus', forceVisible, false);
+        window.addEventListener('blur', forceHidden, false);
+        return () => {
+            document.removeEventListener('visibilitychange', handler);
+            window.removeEventListener('focus', forceVisible);
+            window.removeEventListener('blur', forceHidden);
+        };
+    });
+    return visibility;
+}
+
+function useNotificationEffect(thisPlayer: string, activePlayer: string | undefined) {
+    const visible = useWindowVisibility();
+    const [notified, setNotified] = React.useState<boolean>(false);
+    const notificationRef = React.useRef<Notification|null>(null);
+    React.useEffect(() => {
+        if (thisPlayer == activePlayer && !notified) {
+            if (visible === 'hidden') {
+                notificationRef.current = new Notification('Your turn to play');
+                notificationRef.current.onclick = () => window.focus();
+            }
+            setNotified(true);
+        } else if (thisPlayer != activePlayer && notified) {
+            setNotified(false);
+        }
+        if (visible === 'visible') {
+            notificationRef.current?.close();
+            notificationRef.current = null;
+        }
+    }, [thisPlayer, activePlayer, visible, notified]);
+}
+
 type ClientDeployState = {
     reinforcementsUsed: number,
     request: DeployRequest,
@@ -364,6 +403,7 @@ type ClientReinforceState = {
 
 function App(props: AppProps) {
     const [gameState, gameStateLoading, gameStateError, applyEvent] = useGameState(props.gameId);
+    useNotificationEffect(props.player, gameState?.active_player);
     const [clientDeployState, setClientDeployState] = React.useState<ClientDeployState|null>(null);
     const [clientAdvanceState, setClientAdvanceState] = React.useState<ClientAdvanceState|null>(null);
     const [clientReinforceState, setClientReinforceState] = React.useState<ClientReinforceState|null>(null);
