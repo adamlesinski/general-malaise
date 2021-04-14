@@ -142,9 +142,23 @@ function ReinforcePanel(props: ReinforcePanelProps) {
 }
 
 function WaitingPanel() {
+    const [permission, setPermission] = React.useState(Notification.permission);
+    const requestPermission = () => {
+        try {
+            Notification.requestPermission().then(setPermission);
+        } catch(e) {
+            Notification.requestPermission(setPermission);
+        }
+    };
     return (
         <div className="phase-panel" style={{ backgroundColor: 'grey' }}>
             <h1>WAITING</h1>
+            {
+                permission === 'default' &&
+                <div style={{ flexGrow: 1, display: 'flex', justifyContent: 'flex-end'}}>
+                    <button onClick={requestPermission}>Turn on notifications</button>
+                </div>
+            }
         </div>
     );
 }
