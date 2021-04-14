@@ -175,11 +175,14 @@ type Phase struct {
 type LobbyPhase struct{}
 
 type SpoilsPhase struct {
-	Mandatory bool `json:"mandatory"`
+	Mandatory  bool   `json:"mandatory"`
+	Conquered  bool   `json:"conquered"`
+	BonusSoFar uint64 `json:"bonus"`
 }
 
 type DeployPhase struct {
 	Reinforcements uint64 `json:"reinforcements"`
+	Conquered      bool   `json:"conquered"`
 }
 
 type AttackPhase struct {
@@ -536,7 +539,18 @@ func (g *GameState) applySpoilsAction(spoils *SpoilsAction) ([]*Event, error) {
 	}
 
 	oldPhase := g.Phase
-	g.Phase = Phase{Deploy: &DeployPhase{Reinforcements: player.Reinforcements + bonus}}
+	if len(player.Spoils) >= 5 {
+		// More spoils need to be played. Accumulate the previous bonus with this one.
+		g.Phase = Phase{Spoils: &SpoilsPhase{Mandatory: true, Conquered: oldPhase.Spoils.Conquered, BonusSoFar: oldPhase.Spoils.BonusSoFar + bonus}}
+	} else {
+		reinforcements := bonus + oldPhase.Spoils.BonusSoFar
+		if !oldPhase.Spoils.Conquered {
+			// The player has not conquered any territories, thus these spoils are being played
+			// at the start of their turn. Include the regular reinforcements.
+			reinforcements += player.Reinforcements
+		}
+		g.Phase = Phase{Deploy: &DeployPhase{Reinforcements: reinforcements, Conquered: oldPhase.Spoils.Conquered}}
+	}
 	events := []*Event{
 		{
 			PhaseChanged: &PhaseChangedEvent{
@@ -584,7 +598,7 @@ func (g *GameState) applyDeployAction(deploy *DeployAction) ([]*Event, error) {
 		player.Troops += troops
 	}
 	oldPhase := g.Phase
-	g.Phase = Phase{Attack: &AttackPhase{}}
+	g.Phase = Phase{Attack: &AttackPhase{Conquered: oldPhase.Deploy.Conquered}}
 	return []*Event{
 		{Deploy: deploy},
 		{StatsChanged: g.statsUpdate()},
@@ -702,6 +716,11 @@ func (g *GameState) applyAttackAction(m *Map, attack *AttackAction) ([]*Event, e
 			// Move to the advance phase.
 			g.Phase = Phase{Advance: &AdvancePhase{From: attack.From, To: attack.To}}
 		}
+		if toPlayer.Eliminated {
+			// Take the spoils!
+			fromPlayer.Spoils = append(fromPlayer.Spoils, toPlayer.Spoils...)
+			toPlayer.Spoils = []*Spoil{}
+		}
 		events = append(events, &Event{PhaseChanged: &PhaseChangedEvent{
 			OldPlayer: attack.Player,
 			NewPlayer: attack.Player,
@@ -761,7 +780,11 @@ func (g *GameState) applyAdvanceAction(advance *MoveAction) ([]*Event, error) {
 	to.Troops += advance.Troops
 	from.Troops -= advance.Troops
 	oldPhase := g.Phase
-	g.Phase = Phase{Attack: &AttackPhase{Conquered: true}}
+	if len(g.findPlayer(g.ActivePlayer).Spoils) >= 5 {
+		g.Phase = Phase{Spoils: &SpoilsPhase{Mandatory: true, Conquered: true}}
+	} else {
+		g.Phase = Phase{Attack: &AttackPhase{Conquered: true}}
+	}
 	return []*Event{
 		{Advance: advance},
 		{PhaseChanged: &PhaseChangedEvent{
