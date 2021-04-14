@@ -360,9 +360,9 @@ func main() {
 	ctx.maps["hk"] = NewTestMapHongKong()
 	ctx.games["1"] = NewTestGameHongKong(ctx.maps["hk"])
 
-	staticFs := http.FileServer(http.Dir("/Users/adamlesinski/workspace/map/static"))
-	buildFs := http.FileServer(http.Dir("/Users/adamlesinski/workspace/map/dist"))
-	srcFs := http.FileServer(http.Dir("/Users/adamlesinski/workspace/map/src"))
+	staticFs := http.FileServer(http.Dir("../static"))
+	buildFs := http.FileServer(http.Dir("../dist"))
+	srcFs := http.FileServer(http.Dir("../src"))
 
 	r := mux.NewRouter()
 	r.Handle("/index.css", staticFs)
