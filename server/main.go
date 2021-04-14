@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"sync"
 	"text/template"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
@@ -356,6 +357,7 @@ func (ctx *Context) getMap(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	rand.Seed(time.Now().UnixNano())
 	ctx := NewContext()
 	ctx.maps["hk"] = NewTestMapHongKong()
 	ctx.games["1"] = NewTestGameHongKong(ctx.maps["hk"])
