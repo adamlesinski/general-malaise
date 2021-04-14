@@ -243,12 +243,12 @@ func NewTestMapHongKong() *Map {
 			"New Territories": {
 				Territs: []string{"Tuen Mun", "Yuen Long", "North", "Tai Po", "Tsuen Wan", "Sha Tin", "Sai Kung", "Kwai Tsing"},
 				Color:   "#8fd694",
-				Bonus:   8,
+				Bonus:   7,
 			},
 			"Kowloon": {
 				Territs: []string{"Kowloon City", "Kwun Tong", "Sham Shui Po", "Wong Tai Sin", "Yau Tsim Mong"},
 				Color:   "#f24c00",
-				Bonus:   5,
+				Bonus:   8,
 			},
 			"Hong Kong Island": {
 				Territs: []string{"Central & Western", "Eastern", "Southern", "Wan Chai"},
@@ -258,7 +258,7 @@ func NewTestMapHongKong() *Map {
 			"Islands": {
 				Territs: []string{"Lantau Island", "Lamma Island", "Po Toi"},
 				Color:   "#ffc759",
-				Bonus:   3,
+				Bonus:   2,
 			},
 		},
 	}
